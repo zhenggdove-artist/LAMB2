@@ -35,11 +35,11 @@ const EYE_IRIS_POINTS_SIDE = 600; // 側視瞳孔/虹膜點數（原本 400）
 const EYE_IRIS_POINTS_FRONT = 1000; // 正視瞳孔/虹膜點數（原本 400）
 // 觸手控制參數
 const TENTACLE_SETTINGS = {
-  perBatch: 5, // 一批生成幾根
-  growthPerClick: 0.1, // 每次點擊增加的長度倍率
-  baseLength: 25, // 觸手基礎長度
+  perBatch: 3, // 一批生成幾根
+  growthPerClick: 0.3, // 每次點擊增加的長度倍率
+  baseLength: 10, // 觸手基礎長度
   lengthJitter: 10, // 觸手長度隨機附加
-  towardCameraBias: 0.6, // 越大越朝鏡頭/玩家（+Z）方向
+  towardCameraBias: 0.01, // 越大越朝鏡頭/玩家（+Z）方向
   followScaleStrength: 0.6, // 觸手越靠近鏡頭越放大的強度
 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
