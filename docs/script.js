@@ -977,7 +977,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
     const layoutBounds = isMobile ? { left: -42, right: -8 } : { left: -60, right: -20 };
     const bulletHeightRatio = 0.5;
-    const playerShiftX = isMobile ? MOBILE_PLAYER_SHIFT_X : 0;
+    const playerShiftX = 0;
     const playerScale = isMobile ? MOBILE_PLAYER_SCALE : 1;
 
     // SCENE
@@ -1064,7 +1064,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
     if (projectedRight > desiredRight) {
       targetX += desiredRight - projectedRight;
     }
-    cloud.position.x = targetX + playerShiftX; 
+    cloud.position.x = targetX; 
     cloud.scale.multiplyScalar(playerScale);
     playerScaleRef.current = playerScale;
     scene.add(cloud);
@@ -1087,20 +1087,19 @@ const GamePhase = ({ pointData, onGameOver }) => {
     };
 
     const alignToUI = () => {
-      if (!isMobile) return;
+      if (!isMobile) return true;
       const vRect = labelVRef.current?.getBoundingClientRect();
       const colonRect = labelColonRef.current?.getBoundingClientRect();
-      if (vRect && colonRect) {
-        const leftWorld = screenToWorld(vRect.left, vRect.top + vRect.height / 2).x;
-        const rightWorld = screenToWorld(colonRect.right, colonRect.top + colonRect.height / 2).x;
-        const currentLeft = box.min.x * playerScale + cloud.position.x;
-        const currentRight = box.max.x * playerScale + cloud.position.x;
-        let offset = leftWorld - currentLeft;
-        cloud.position.x += offset;
-        const overshoot = (box.max.x * playerScale + cloud.position.x) - rightWorld;
-        if (overshoot > 0) {
-          cloud.position.x -= overshoot;
-        }
+      if (!vRect || !colonRect) return false;
+      const leftWorld = screenToWorld(vRect.right, vRect.top + vRect.height / 2).x;
+      const rightWorld = screenToWorld(colonRect.left, colonRect.top + colonRect.height / 2).x;
+      const currentLeft = box.min.x * playerScale + cloud.position.x;
+      const currentRight = box.max.x * playerScale + cloud.position.x;
+      let offset = leftWorld - currentLeft;
+      cloud.position.x += offset;
+      const overshoot = (box.max.x * playerScale + cloud.position.x) - rightWorld;
+      if (overshoot > 0) {
+        cloud.position.x -= overshoot;
       }
 
       const npcRect = npcImageRef.current?.getBoundingClientRect();
@@ -1111,21 +1110,24 @@ const GamePhase = ({ pointData, onGameOver }) => {
       } else {
         setDefaultBulletSpawn();
       }
+      return true;
+    };
+
+    const scheduleAlign = () => {
+      if (isMobile) {
+        alignPendingRef.current = true;
+      } else {
+        setDefaultBulletSpawn();
+      }
     };
 
     setDefaultBulletSpawn();
-    if (isMobile) {
-      requestAnimationFrame(alignToUI);
-    }
+    scheduleAlign();
 
     const handleResize = () => {
       renderer.setPixelRatio(window.devicePixelRatio);
       applyRendererViewport();
-      if (isMobile) {
-        requestAnimationFrame(alignToUI);
-      } else {
-        setDefaultBulletSpawn();
-      }
+      scheduleAlign();
     };
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', handleResize);
@@ -1595,6 +1597,10 @@ const GamePhase = ({ pointData, onGameOver }) => {
               if (bullet) {
                   bulletsRef.current.push(bullet);
               }
+          }
+
+          if (alignPendingRef.current && alignToUI()) {
+              alignPendingRef.current = false;
           }
 
           for (let i = bulletsRef.current.length - 1; i >= 0; i--) {
