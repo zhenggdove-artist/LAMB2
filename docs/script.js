@@ -1384,9 +1384,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
             return newHealth;
         });
 
-        if (healthRef.current > 100) {
-            spawnHorrorGrowth();
-        }
+        // 每次有效點擊都生成觸手
+        spawnHorrorGrowth();
       }
     };
 
