@@ -31,7 +31,7 @@ const EYE_PUPIL_COLOR = 0x66ccff; // 水藍色
 const EYE_PUPIL_THRESHOLD = 0.45; // 半徑內視為瞳孔（原本 0.35）
 const EYE_PUPIL_SIZE = 0.06; // 瞳孔點大小（原本 0.04）
 const EYE_IRIS_POINTS_SIDE = 600; // 側視瞳孔/虹膜點數（原本 400）
-const EYE_IRIS_POINTS_FRONT = 600; // 正視瞳孔/虹膜點數（原本 400）
+const EYE_IRIS_POINTS_FRONT = 1000; // 正視瞳孔/虹膜點數（原本 400）
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
 
@@ -1021,7 +1021,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(pointData, 3));
     
     // Very small points for "Neural Cloud" look
-    const sizes = new Float32Array(pointData.length / 3).fill(0.03); 
+    const sizes = new Float32Array(pointData.length / 3).fill(0.05); 
     geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
     
     const colors = [];
