@@ -33,15 +33,15 @@ const EYE_PUPIL_THRESHOLD = 0.45; // 半徑內視為瞳孔（原本 0.35）
 const EYE_PUPIL_SIZE = 0.06; // 瞳孔點大小（原本 0.04）
 const EYE_IRIS_POINTS_SIDE = 600; // 側視瞳孔/虹膜點數（原本 400）
 const EYE_IRIS_POINTS_FRONT = 1000; // 正視瞳孔/虹膜點數（原本 400）
-const TENTACLE_DENSITY = { rings: 100, pointsPerRing: 50 }; // 觸手點環數與每環點數
+const TENTACLE_DENSITY = { rings: 200, pointsPerRing: 80 }; // 觸手點環數與每環點數
 // 觸手控制參數
 const TENTACLE_SETTINGS = {
   perBatch: 3, // 一批生成幾根
   growthPerClick: 0.3, // 每次點擊增加的長度倍率
   baseLength: 20, // 觸手基礎長度
   lengthJitter: 10, // 觸手長度隨機附加
-  towardCameraBias: 5, // 越大越朝鏡頭/玩家（+Z）方向
-  followScaleStrength: 5, // 觸手越靠近鏡頭越放大的強度
+  towardCameraBias: 0.8, // 越大越朝鏡頭/玩家（+Z）方向
+  followScaleStrength: 10, // 觸手越靠近鏡頭越放大的強度
 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
