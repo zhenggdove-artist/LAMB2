@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // ==========================================
@@ -18,6 +18,8 @@ const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
 const TENTACLE_MAX_RINGS = 60;
 const TENTACLE_POINTS_PER_RING = 30;
+const MOBILE_PLAYER_SCALE = 1;
+const MOBILE_BULLET_SIZE = 0.6;
 
 const useIsMobileViewport = () => {
   const getMatches = () => {
@@ -929,6 +931,27 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const isDeadRef = useRef(false);
   const pendingShotRef = useRef(false);
   const bulletSpawnYRef = useRef(SHOOTER_WORLD_POS.y);
+  const bulletSpawnXRef = useRef(SHOOTER_WORLD_POS.x);
+  const playerScaleRef = useRef(1);
+  const labelVRef = useRef(null);
+  const labelColonRef = useRef(null);
+  const npcImageRef = useRef(null);
+  const healthLabelRef = useRef(null);
+  const playerBoundsRef = useRef({ minX: 0, maxX: 0, minY: 0, height: 0 });
+  const [healthBarWidth, setHealthBarWidth] = useState(null);
+  const alignPendingRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const updateBarWidth = () => {
+      if (healthLabelRef.current) {
+        const rect = healthLabelRef.current.getBoundingClientRect();
+        setHealthBarWidth(rect.width);
+      }
+    };
+    updateBarWidth();
+    window.addEventListener('resize', updateBarWidth);
+    return () => window.removeEventListener('resize', updateBarWidth);
+  }, [isMobile, health]);
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -1053,6 +1076,15 @@ const GamePhase = ({ pointData, onGameOver }) => {
     entityRef.current = cloud;
 
     const playerHeight = box.max.y - box.min.y;
+    const playerWidth = box.max.x - box.min.x;
+    const scaledMinX = box.min.x;
+    const scaledMaxX = box.max.x;
+    playerBoundsRef.current = {
+      minX: scaledMinX,
+      maxX: scaledMaxX,
+      minY: box.min.y,
+      height: playerHeight
+    };
     bulletSpawnYRef.current = box.min.y + playerHeight * bulletHeightRatio + cloud.position.y;
 
     // ----------------------------
