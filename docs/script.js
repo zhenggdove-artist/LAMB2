@@ -979,7 +979,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const THREE = window.THREE;
     if (!THREE) return;
 
-    const layoutBounds = isMobile ? { left: -20, right: -8 } : { left: -60, right: -20 };
+    const layoutBounds = isMobile ? { left: -42, right: -8 } : { left: -60, right: -20 };
     const bulletHeightRatio = 0.5;
 
     // SCENE
