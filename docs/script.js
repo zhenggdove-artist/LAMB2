@@ -33,6 +33,7 @@ const EYE_PUPIL_THRESHOLD = 0.45; // 半徑內視為瞳孔（原本 0.35）
 const EYE_PUPIL_SIZE = 0.06; // 瞳孔點大小（原本 0.04）
 const EYE_IRIS_POINTS_SIDE = 600; // 側視瞳孔/虹膜點數（原本 400）
 const EYE_IRIS_POINTS_FRONT = 1000; // 正視瞳孔/虹膜點數（原本 400）
+const TENTACLE_DENSITY = { rings: 60, pointsPerRing: 30 }; // 觸手點環數與每環點數
 // 觸手控制參數
 const TENTACLE_SETTINGS = {
   perBatch: 3, // 一批生成幾根
@@ -959,8 +960,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const animationFrameRef = useRef(0);
 
   // Config for Tentacle Aesthetics
-  const MAX_RINGS = 60; // How many transverse rings
-  const POINTS_PER_RING = 30; // Points in one circle
+  const MAX_RINGS = TENTACLE_DENSITY.rings; // How many transverse rings
+  const POINTS_PER_RING = TENTACLE_DENSITY.pointsPerRing; // Points in one circle
 
   useEffect(() => {
     const THREE = window.THREE;
@@ -1279,6 +1280,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
         pointsMesh.position.copy(rootPos);
         // Start tiny for fade-in
         pointsMesh.scale.set(0.01, 0.01, 0.01); 
+        pointsMesh.userData.logicalScale = 0.01; // 紀錄邏輯縮放，避免每幀累乘
 
         entityRef.current.add(pointsMesh);
 
@@ -1428,17 +1430,17 @@ const GamePhase = ({ pointData, onGameOver }) => {
               if (g.type === 'tentacle_cloud') {
                   const { curve, restPoints, seed, speed, mesh, spiralFactor, rootColor, tipColor, originalColors, createdAt } = g;
                   
-                  // 1. Smooth Growth (Tween scale)
-                  // If this mesh is part of current batch, interpolate towards targetScale
-                  let baseScale = mesh.scale.x;
+                  // 1. Smooth Growth (Tween scale) - 使用邏輯縮放避免累乘爆炸
+                  let logicalScale = mesh.userData.logicalScale ?? mesh.scale.x;
                   if (tentacleBatchRef.current.meshes.includes(mesh)) {
-                      baseScale = baseScale + (targetScaleGlobal - baseScale) * 0.1;
+                      logicalScale = logicalScale + (targetScaleGlobal - logicalScale) * 0.1;
                   }
+                  mesh.userData.logicalScale = logicalScale;
                   // 1b. 越靠近鏡頭越放大，遠離鏡頭變小（非累積）
                   const worldPos = mesh.getWorldPosition(new THREE.Vector3());
                   const distToCam = worldPos.distanceTo(camera.position);
                   const followFactor = 1 + TENTACLE_SETTINGS.followScaleStrength * Math.max(0, (60 - distToCam) / 60);
-                  const finalScale = baseScale * followFactor;
+                  const finalScale = logicalScale * followFactor;
                   mesh.scale.set(finalScale, finalScale, finalScale);
 
                   // 2. Animate Control Points (Writhing)
