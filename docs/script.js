@@ -18,11 +18,20 @@ const PLAYER_CONFIG = {
   desktop: { position: { x: -35, y: 0, z: 0 }, baseScale: 1.0 },
   mobile: { position: { x: -10, y: 0, z: 0 }, baseScale: 1.2 },
 };
+// 玩家碰撞判定用半徑（玩家局部座標下的距離，單位同點雲座標）
+const PLAYER_HIT_RADIUS = 1.2;
 // NPC 子彈生成點與大小：桌面與手機分開調
 const SHOOTER_BULLET_CONFIG = {
   desktop: { origin: { x: 30, y: 5, z: 0 }, radius: 0.8, size: 1.2 },
   mobile: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
 };
+// 眼睛調整參數
+const EYE_SCALE = 1.8; // 整顆眼睛放大倍率（原本 1.5）
+const EYE_PUPIL_COLOR = 0x66ccff; // 水藍色
+const EYE_PUPIL_THRESHOLD = 0.45; // 半徑內視為瞳孔（原本 0.35）
+const EYE_PUPIL_SIZE = 0.06; // 瞳孔點大小（原本 0.04）
+const EYE_IRIS_POINTS_SIDE = 600; // 側視瞳孔/虹膜點數（原本 400）
+const EYE_IRIS_POINTS_FRONT = 600; // 正視瞳孔/虹膜點數（原本 400）
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
 
@@ -308,7 +317,7 @@ const generateCyberEye = (THREE, viewType) => {
 
     const cyan = new THREE.Color(0x00ffff);
     const white = new THREE.Color(0xffffff);
-    const darkCyan = new THREE.Color(0x004444);
+    const pupilColor = new THREE.Color(EYE_PUPIL_COLOR);
 
     // Helper to push point
     const addPoint = (x1, y1, z1, x2, y2, z2, s, c) => {
@@ -325,7 +334,7 @@ const generateCyberEye = (THREE, viewType) => {
         const irisRadZ = 0.4;
         
         // 1. IRIS
-        const irisPoints = 400;
+        const irisPoints = EYE_IRIS_POINTS_SIDE;
         for(let i=0; i<irisPoints; i++) {
             const r = Math.sqrt(Math.random());
             const theta = Math.random() * Math.PI * 2;
@@ -334,11 +343,11 @@ const generateCyberEye = (THREE, viewType) => {
             const bulge = Math.cos(r * Math.PI * 0.5) * 0.2; 
             const x = irisX + bulge;
 
-            const isPupil = r < 0.35;
-            const col = isPupil ? darkCyan : cyan;
+            const isPupil = r < EYE_PUPIL_THRESHOLD;
+            const col = isPupil ? pupilColor : cyan;
 
             // PUPIL SQUASH: When closed, Y scales down to 0
-            addPoint(x, y, z, x, y * 0.05, z, isPupil ? 0.04 : 0.05, col);
+            addPoint(x, y, z, x, y * 0.05, z, isPupil ? EYE_PUPIL_SIZE : 0.05, col);
         }
 
         // 2. LIDS
@@ -396,7 +405,7 @@ const generateCyberEye = (THREE, viewType) => {
         const irisRad = 0.5;
 
         // 1. IRIS
-        const irisPoints = 400;
+        const irisPoints = EYE_IRIS_POINTS_FRONT;
         for(let i=0; i<irisPoints; i++) {
             const r = Math.sqrt(Math.random());
             const theta = Math.random() * Math.PI * 2;
@@ -405,11 +414,11 @@ const generateCyberEye = (THREE, viewType) => {
             const bulge = Math.cos(r * Math.PI * 0.5) * 0.2;
             const z = irisZ + bulge;
 
-            const isPupil = r < 0.35;
-            const col = isPupil ? darkCyan : cyan;
+            const isPupil = r < EYE_PUPIL_THRESHOLD;
+            const col = isPupil ? pupilColor : cyan;
 
             // SQUASH Y
-            addPoint(x, y, z, x, y * 0.05, z, isPupil ? 0.04 : 0.05, col);
+            addPoint(x, y, z, x, y * 0.05, z, isPupil ? EYE_PUPIL_SIZE : 0.05, col);
         }
 
         // 2. LIDS (Parabola in X)
@@ -914,6 +923,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const entityRef = useRef(null); 
   const horrorGrowthsRef = useRef([]); 
   const bulletsRef = useRef([]);
+  const collisionPointsRef = useRef([]); // 碰撞採樣點（玩家局部座標）
   const bloodParticlesRef = useRef([]);
   const isDeadRef = useRef(false);
   const pendingShotRef = useRef(false);
@@ -1041,13 +1051,20 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
     geometry.computeBoundingBox();
     const box = geometry.boundingBox;
+    // 碰撞採樣點：取部分點雲用來做距離判定（避免方形碰撞）
+    const totalPoints = pointData.length / 3;
+    const stride = Math.max(1, Math.floor(totalPoints / 1500)); // 約取 1500 點做碰撞
+    const sampled = [];
+    for (let i = 0; i < totalPoints; i += stride) {
+      sampled.push(new THREE.Vector3(pointData[i * 3], pointData[i * 3 + 1], pointData[i * 3 + 2]));
+    }
+    collisionPointsRef.current = sampled;
 
     // ----------------------------
     // EYE ATTACHMENT LOGIC (EDGE DETECTION)
     // ----------------------------
     
     // Pre-calculate candidate points
-    const totalPoints = pointData.length / 3;
     const candidates = [];
     for(let i=0; i<totalPoints; i++) {
         candidates.push({
@@ -1116,7 +1133,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
         
         const mesh = new THREE.Points(eyeGeo, eyeMat);
         mesh.position.set(px, py, pz + 1.0); 
-        mesh.scale.set(1.5, 1.5, 1.5);
+        mesh.scale.set(EYE_SCALE, EYE_SCALE, EYE_SCALE);
         cloud.add(mesh);
 
         // Register controller
@@ -1487,17 +1504,17 @@ const GamePhase = ({ pointData, onGameOver }) => {
           }
 
           // BULLET LOGIC
-          if (pendingShotRef.current) {
-              pendingShotRef.current = false;
-              const bullet = createBullet(scene);
-              if (bullet) {
-                  bulletsRef.current.push(bullet);
-              }
+      if (pendingShotRef.current) {
+          pendingShotRef.current = false;
+          const bullet = createBullet(scene);
+          if (bullet) {
+              bulletsRef.current.push(bullet);
           }
-
-          for (let i = bulletsRef.current.length - 1; i >= 0; i--) {
-              const b = bulletsRef.current[i];
-              b.position.x -= 0.5; // SWAPPED: Moves Right to Left
+      }
+      const tmpVec = new THREE.Vector3();
+      for (let i = bulletsRef.current.length - 1; i >= 0; i--) {
+          const b = bulletsRef.current[i];
+          b.position.x -= 0.5; // SWAPPED: Moves Right to Left
               const data = b.userData || (b.userData = {});
               if (data.pulseOffset === undefined) {
                   data.pulseOffset = Math.random() * Math.PI * 2;
@@ -1522,11 +1539,29 @@ const GamePhase = ({ pointData, onGameOver }) => {
               const hitHalfWidth = 12 * playerConf.baseScale; // 可依需要放大/縮小
               const hitHalfHeight = 10; // 垂直判定範圍
 
+              // 方形粗判斷（快速）
+              let hit = false;
               if (
                   b.position.x < playerCenterX + hitHalfWidth &&
                   b.position.x > playerCenterX - hitHalfWidth &&
                   Math.abs(b.position.y - playerConf.position.y) < hitHalfHeight
               ) {
+                  // 精細判斷：將子彈座標轉到玩家局部座標，計算與點雲採樣點距離
+                  if (entityRef.current && collisionPointsRef.current.length) {
+                      const localPos = entityRef.current.worldToLocal(tmpVec.copy(b.position));
+                      const r2 = PLAYER_HIT_RADIUS * PLAYER_HIT_RADIUS;
+                      for (let k = 0; k < collisionPointsRef.current.length; k++) {
+                          if (localPos.distanceToSquared(collisionPointsRef.current[k]) <= r2) {
+                              hit = true;
+                              break;
+                          }
+                      }
+                  } else {
+                      hit = true; // 後備：若無點雲資料仍視為命中
+                  }
+              }
+
+              if (hit) {
                   disposeBullet(scene, b);
                   bulletsRef.current.splice(i, 1);
                   hitIntensityRef.current = 1.0;
