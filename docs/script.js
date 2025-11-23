@@ -729,7 +729,7 @@ const DrawingPhase = ({ onFinish }) => {
       contextRef.current = ctx;
       
       // Clear white
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fillStyle = '#E1C4C4';
       ctx.fillRect(0, 0, 300, 300);
     }
   }, []);
@@ -841,20 +841,26 @@ const DrawingPhase = ({ onFinish }) => {
   };
 
   const tentacleConfigs = useMemo(() => {
-    return Array.from({ length: 8 }, (_, idx) => ({
-      left: `${5 + Math.random() * 90}%`,
-      width: `${1 + Math.random() * 2}px`,
-      height: `${45 + Math.random() * 40}%`,
-      delay: `${idx * 0.4 + Math.random() * 0.5}s`,
-      duration: `${4 + Math.random() * 3}s`
-    }));
+    const createGroup = (count, minLeft, maxLeft) => {
+      return Array.from({ length: count }, (_, idx) => ({
+        left: `${minLeft + Math.random() * (maxLeft - minLeft)}%`,
+        width: `${1 + Math.random() * 2.5}px`,
+        height: `${110 + Math.random() * 30}%`,
+        delay: `${idx * 0.35 + Math.random() * 0.4}s`,
+        duration: `${5 + Math.random() * 3}s`
+      }));
+    };
+    return [
+      ...createGroup(6, -5, 12), // Left edge cluster
+      ...createGroup(6, 88, 105) // Right edge cluster
+    ];
   }, []);
 
   const tentacleStyles = `
     @keyframes tentacleRise {
-      0% { transform: scaleY(0); opacity: 0; }
-      40% { opacity: 0.7; }
-      100% { transform: scaleY(1); opacity: 0.95; }
+      0% { transform: scaleY(0.1); opacity: 0; }
+      35% { opacity: 0.5; }
+      100% { transform: scaleY(1.2); opacity: 0.9; }
     }
   `;
 
@@ -896,33 +902,35 @@ const DrawingPhase = ({ onFinish }) => {
           />
         ))}
       </div>
-      <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
-      <canvas
-        ref={canvasRef}
-        onPointerDown={startDrawing}
-        onPointerUp={finishDrawing}
-        onPointerMove={draw}
-        onPointerLeave={finishDrawing}
-        onPointerCancel={finishDrawing}
-        style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: 'rgba(255,255,255,0.75)', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.15)' }}
-      />
-      <button 
-        onClick={handleFinish}
-        className="neural-text"
-        style={{
-          marginTop: '20px',
-          background: 'transparent',
-          color: '#00ff00',
-          border: '1px solid #00ff00',
-          padding: '10px 30px',
-          fontFamily: 'Megrim',
-          fontSize: '24px',
-          cursor: 'pointer',
-          fontWeight: 'bold'
-        }}
-      >
-        INITIATE LIFE
-      </button>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
+        <canvas
+          ref={canvasRef}
+          onPointerDown={startDrawing}
+          onPointerUp={finishDrawing}
+          onPointerMove={draw}
+          onPointerLeave={finishDrawing}
+          onPointerCancel={finishDrawing}
+          style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.15)' }}
+        />
+        <button 
+          onClick={handleFinish}
+          className="neural-text"
+          style={{
+            marginTop: '20px',
+            background: 'transparent',
+            color: '#00ff00',
+            border: '1px solid #00ff00',
+            padding: '10px 30px',
+            fontFamily: 'Megrim',
+            fontSize: '24px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          INITIATE LIFE
+        </button>
+      </div>
     </div>
   );
 };
