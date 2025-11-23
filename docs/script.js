@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // ==========================================
@@ -22,7 +22,7 @@ const PLAYER_CONFIG = {
 const PLAYER_HIT_RADIUS = 1.2;
 // NPC 子彈生成點與大小：桌面與手機分開調
 const SHOOTER_BULLET_CONFIG = {
-  desktop: { origin: { x: 40, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
+  desktop: { origin: { x: 110, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
   mobile: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
 };
 const BULLET_SPEED = 0.6; // 子彈朝玩家移動的速度
@@ -38,7 +38,7 @@ const TENTACLE_DENSITY = { rings: 150, pointsPerRing: 50 }; // 觸手點環數�
 const TENTACLE_SETTINGS = {
   perBatch: 5, // 一批生成幾根
   growthPerClick: 0.3, // 每次點擊增加的長度倍率
-  baseLength: 20, // 觸手基礎長度
+  baseLength: 10, // 觸手基礎長度
   lengthJitter: 10, // 觸手長度隨機附加
   towardCameraBias: 0.8, // 越大越朝鏡頭/玩家（+Z）方向
   followScaleStrength: 2, // 觸手越靠近鏡頭越放大的強度
@@ -1384,8 +1384,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
             return newHealth;
         });
 
-        // 每次有效點擊都生成觸手
-        spawnHorrorGrowth();
+        if (healthRef.current > 100) {
+            spawnHorrorGrowth();
+        }
       }
     };
 
@@ -1572,13 +1573,13 @@ const GamePhase = ({ pointData, onGameOver }) => {
               }
               b.rotation.z += 0.08;
 
-              // 依玩家點雲最近點方向移動（每幀重算），並記錄最近距離供判定
+              // 依玩家點雲最近點方向移動（每幀重算，不再水平）
               let moved = false;
-              let nearestD2 = Infinity;
               if (entityRef.current && collisionPointsRef.current.length) {
                   localTmp.copy(b.position);
                   entityRef.current.worldToLocal(localTmp);
                   let nearest = null;
+                  let nearestD2 = Infinity;
                   for (let k = 0; k < collisionPointsRef.current.length; k++) {
                       const p = collisionPointsRef.current[k];
                       const d2 = localTmp.distanceToSquared(p);
@@ -1618,14 +1619,10 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   if (entityRef.current && collisionPointsRef.current.length) {
                       const localPos = entityRef.current.worldToLocal(tmpHitVec.copy(b.position));
                       const r2 = PLAYER_HIT_RADIUS * PLAYER_HIT_RADIUS;
-                      if (nearestD2 <= r2) {
-                          hit = true;
-                      } else {
-                          for (let k = 0; k < collisionPointsRef.current.length; k++) {
-                              if (localPos.distanceToSquared(collisionPointsRef.current[k]) <= r2) {
-                                  hit = true;
-                                  break;
-                              }
+                      for (let k = 0; k < collisionPointsRef.current.length; k++) {
+                          if (localPos.distanceToSquared(collisionPointsRef.current[k]) <= r2) {
+                              hit = true;
+                              break;
                           }
                       }
                   } else {
