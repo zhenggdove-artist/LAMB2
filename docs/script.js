@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // ==========================================
@@ -677,12 +677,12 @@ const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
         return () => cancelAnimationFrame(reqRef.current);
     }, []);
 
-    const containerWidth = isMobile ? '50vw' : '600px';
-    const containerHeight = isMobile ? '28px' : '40px';
+    const containerWidth = isMobile ? '25vw' : '600px';
+    const containerHeight = isMobile ? '18px' : '40px';
     const containerTop = isMobile ? '20px' : '30px';
     const containerLeft = isMobile ? '20px' : '30px';
-    const canvasWidth = isMobile ? 800 : 1200;
-    const canvasHeight = isMobile ? 60 : 80;
+    const canvasWidth = isMobile ? 600 : 1200;
+    const canvasHeight = isMobile ? 40 : 80;
 
     return (
         <div style={{
@@ -729,7 +729,7 @@ const DrawingPhase = ({ onFinish }) => {
       contextRef.current = ctx;
       
       // Clear white
-      ctx.fillStyle = 'white';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.fillRect(0, 0, 300, 300);
     }
   }, []);
@@ -840,6 +840,24 @@ const DrawingPhase = ({ onFinish }) => {
     onFinish(points);
   };
 
+  const tentacleConfigs = useMemo(() => {
+    return Array.from({ length: 8 }, (_, idx) => ({
+      left: `${5 + Math.random() * 90}%`,
+      width: `${1 + Math.random() * 2}px`,
+      height: `${45 + Math.random() * 40}%`,
+      delay: `${idx * 0.4 + Math.random() * 0.5}s`,
+      duration: `${4 + Math.random() * 3}s`
+    }));
+  }, []);
+
+  const tentacleStyles = `
+    @keyframes tentacleRise {
+      0% { transform: scaleY(0); opacity: 0; }
+      40% { opacity: 0.7; }
+      100% { transform: scaleY(1); opacity: 0.95; }
+    }
+  `;
+
   return (
     <div style={{
       display: 'flex', 
@@ -847,8 +865,37 @@ const DrawingPhase = ({ onFinish }) => {
       alignItems: 'center', 
       justifyContent: 'center', 
       height: '100vh',
-      background: '#111'
+      background: 'radial-gradient(circle at top, rgba(30,30,30,0.9), #050505)',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
+      <style>{tentacleStyles}</style>
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'hidden',
+        pointerEvents: 'none'
+      }}>
+        {tentacleConfigs.map((tentacle, index) => (
+          <div
+            key={`tentacle-${index}`}
+            style={{
+              position: 'absolute',
+              bottom: '-10%',
+              left: tentacle.left,
+              width: tentacle.width,
+              height: tentacle.height,
+              background: 'linear-gradient(180deg, rgba(0,255,170,0.15) 0%, rgba(0,80,40,0.8) 80%)',
+              filter: 'blur(0.5px)',
+              transformOrigin: 'bottom center',
+              animation: `tentacleRise ${tentacle.duration} ease-in forwards`,
+              animationDelay: tentacle.delay,
+              animationIterationCount: 'infinite',
+              animationDirection: 'alternate',
+            }}
+          />
+        ))}
+      </div>
       <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
       <canvas
         ref={canvasRef}
@@ -857,7 +904,7 @@ const DrawingPhase = ({ onFinish }) => {
         onPointerMove={draw}
         onPointerLeave={finishDrawing}
         onPointerCancel={finishDrawing}
-        style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: 'white', touchAction: 'none' }}
+        style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: 'rgba(255,255,255,0.75)', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.15)' }}
       />
       <button 
         onClick={handleFinish}
