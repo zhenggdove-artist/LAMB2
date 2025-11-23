@@ -765,8 +765,8 @@ const DrawingPhase = ({ onFinish }) => {
       ctx.lineWidth = 4;
       contextRef.current = ctx;
       
-      // Clear white
-      ctx.fillStyle = 'white';
+      // Canvas background
+      ctx.fillStyle = '#5CADAD';
       ctx.fillRect(0, 0, 300, 300);
     }
   }, []);
