@@ -11,8 +11,8 @@ const ASSETS = {
 };
 
 const MOBILE_BREAKPOINT = 768;
-const PLAYER_BASE_SCALE = 0.33; // 將玩家雲團預設縮小為原本約 1/3
-const PLAYER_SCREEN_ANCHOR_Y = 0.5; // 以畫面中線當作玩家水平定位的換算基準
+const PLAYER_BASE_SCALE = 1; // 將玩家雲團預設縮小為原本約 1/3
+const PLAYER_SCREEN_ANCHOR_Y = 1; // 以畫面中線當作玩家水平定位的換算基準
 const BULLET_SCALE = 0.33; // 將子彈雲團縮小為原本約 1/3
 const HEALTHBAR_LAYOUT = {
   mobile: { left: 20, top: 20, widthVw: 50, height: 28, canvasWidth: 800, canvasHeight: 60 },
