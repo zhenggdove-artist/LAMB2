@@ -22,7 +22,7 @@ const PLAYER_CONFIG = {
 const PLAYER_HIT_RADIUS = 1.2;
 // NPC 子彈生成點與大小：桌面與手機分開調
 const SHOOTER_BULLET_CONFIG = {
-  desktop: { origin: { x: 110, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
+  desktop: { origin: { x: 140, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
   mobile: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
 };
 const BULLET_SPEED = 0.6; // 子彈朝玩家移動的速度
@@ -1375,19 +1375,23 @@ const GamePhase = ({ pointData, onGameOver }) => {
       hitTestMesh.updateMatrixWorld();
       
       const intersects = raycaster.intersectObject(hitTestMesh);
-      if (intersects.length > 0) {
-        setClickCenterFromWorldPoint(intersects[0].point);
+      const hitPoint = intersects[0]?.point;
+
+      if (hitPoint) {
+        setClickCenterFromWorldPoint(hitPoint);
         healIntensityRef.current = 1.0;
         setHealth(prev => {
             const newHealth = prev + 5;
             healthRef.current = newHealth;
             return newHealth;
         });
-
-        if (healthRef.current > 100) {
-            spawnHorrorGrowth();
-        }
+      } else if (entityRef.current) {
+        // fallback: 用玩家中心避免漏掉觸手生成位置
+        setClickCenterFromWorldPoint(entityRef.current.getWorldPosition(new THREE.Vector3()));
       }
+
+      // 每次點擊都生成觸手（無論是否補血）
+      spawnHorrorGrowth();
     };
 
     window.addEventListener('pointerdown', onMouseClick);
