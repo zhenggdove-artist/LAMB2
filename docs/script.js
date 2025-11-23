@@ -1514,10 +1514,19 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   data.baseY = b.position.y;
               }
               b.rotation.z += 0.08;
-              b.position.y = data.baseY + Math.sin(pulse * 2.0) * 1.2;
+              // 固定在生成時的 Y，不再上下飄
+              b.position.y = data.baseY;
 
-              // Hit Detection (Player is at x = -35)
-              if (b.position.x < -25 && b.position.x > -45 && Math.abs(b.position.y) < 10) {
+              // Hit Detection (依玩家配置位置計算)
+              const playerCenterX = playerConf.position.x;
+              const hitHalfWidth = 12 * playerConf.baseScale; // 可依需要放大/縮小
+              const hitHalfHeight = 10; // 垂直判定範圍
+
+              if (
+                  b.position.x < playerCenterX + hitHalfWidth &&
+                  b.position.x > playerCenterX - hitHalfWidth &&
+                  Math.abs(b.position.y - playerConf.position.y) < hitHalfHeight
+              ) {
                   disposeBullet(scene, b);
                   bulletsRef.current.splice(i, 1);
                   hitIntensityRef.current = 1.0;
@@ -1530,7 +1539,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   setLastHitTime(Date.now());
                   continue;
               }
-              if (b.position.x < -60) { // Removed when off screen Left
+              const cleanupX = playerCenterX - (hitHalfWidth + 20);
+              if (b.position.x < cleanupX) { // Removed when off screen Left
                   disposeBullet(scene, b);
                   bulletsRef.current.splice(i, 1);
               }
