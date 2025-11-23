@@ -766,7 +766,8 @@ const DrawingPhase = ({ onFinish }) => {
       contextRef.current = ctx;
       
       // Canvas background
-      ctx.fillStyle = '#5CADAD';
+      ctx.clearRect(0, 0, 300, 300);
+      ctx.fillStyle = '#FFE4CA';
       ctx.fillRect(0, 0, 300, 300);
     }
   }, []);
@@ -849,9 +850,13 @@ const DrawingPhase = ({ onFinish }) => {
       for (let x = 0; x < 600; x += 3) {
         const index = (y * 600 + x) * 4;
         const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
+        const a = data[index + 3];
+        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
         
         // If dark pixel (drawn line)
-        if (r < 200) {
+        if (a > 10 && brightness < 180) {
           const baseX = (x - 300) / 10;
           const baseY = -(y - 300) / 10;
 
@@ -1528,7 +1533,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   bulletsRef.current.push(bullet);
               }
           }
-          const tmpVec = new THREE.Vector3();
+          const tmpHitVec = new THREE.Vector3();
+          const localTmp = new THREE.Vector3();
+          const targetWorld = new THREE.Vector3();
           for (let i = bulletsRef.current.length - 1; i >= 0; i--) {
               const b = bulletsRef.current[i];
               const data = b.userData || (b.userData = {});
@@ -1547,13 +1554,34 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   data.baseY = b.position.y;
               }
               b.rotation.z += 0.08;
-              // 固定在生成時的 Y，不再上下飄
-              b.position.y = data.baseY;
 
-              // 依預先計算的方向向玩家移動
-              if (data.dir) {
-                  b.position.add(data.dir);
-              } else {
+              // 依玩家點雲最近點方向移動（每幀重算，不再水平）
+              let moved = false;
+              if (entityRef.current && collisionPointsRef.current.length) {
+                  localTmp.copy(b.position);
+                  entityRef.current.worldToLocal(localTmp);
+                  let nearest = null;
+                  let nearestD2 = Infinity;
+                  for (let k = 0; k < collisionPointsRef.current.length; k++) {
+                      const p = collisionPointsRef.current[k];
+                      const d2 = localTmp.distanceToSquared(p);
+                      if (d2 < nearestD2) {
+                          nearestD2 = d2;
+                          nearest = p;
+                      }
+                  }
+                  if (nearest) {
+                      targetWorld.copy(nearest).applyMatrix4(entityRef.current.matrixWorld);
+                      const dirVec = targetWorld.sub(b.position);
+                      const len2 = dirVec.lengthSq();
+                      if (len2 > 0.0001) {
+                          dirVec.normalize().multiplyScalar(BULLET_SPEED);
+                          b.position.add(dirVec);
+                          moved = true;
+                      }
+                  }
+              }
+              if (!moved) {
                   b.position.x -= BULLET_SPEED;
               }
 
@@ -1571,7 +1599,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
               ) {
                   // 精細判斷：將子彈座標轉到玩家局部座標，計算與點雲採樣點距離
                   if (entityRef.current && collisionPointsRef.current.length) {
-                      const localPos = entityRef.current.worldToLocal(tmpVec.copy(b.position));
+                      const localPos = entityRef.current.worldToLocal(tmpHitVec.copy(b.position));
                       const r2 = PLAYER_HIT_RADIUS * PLAYER_HIT_RADIUS;
                       for (let k = 0; k < collisionPointsRef.current.length; k++) {
                           if (localPos.distanceToSquared(collisionPointsRef.current[k]) <= r2) {
