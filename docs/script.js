@@ -545,7 +545,7 @@ const generateRingedPoints = (
 // ==========================================
 
 // --- DYNAMIC PARTICLE HEALTH BAR ---
-const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
+const PointCloudHealthBar = ({ health, lastHit, isMobile = false, widthOverride }) => {
     const canvasRef = useRef(null);
     const healthRef = useRef(health); 
     const displayedHealthRef = useRef(health); // For fluid animation
@@ -712,7 +712,7 @@ const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
         return () => cancelAnimationFrame(reqRef.current);
     }, []);
 
-    const containerWidth = isMobile ? '25vw' : '600px';
+    const containerWidth = widthOverride ?? (isMobile ? '25vw' : '600px');
     const containerHeight = isMobile ? '18px' : '40px';
     const containerTop = isMobile ? '20px' : '30px';
     const containerLeft = isMobile ? '20px' : '30px';
@@ -724,7 +724,7 @@ const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
             position: 'absolute',
             top: containerTop,
             left: containerLeft,
-            width: containerWidth, 
+            width: typeof containerWidth === 'number' ? `${containerWidth}px` : containerWidth, 
             height: containerHeight,
             borderBottom: '1px solid rgba(0,255,0,0.2)',
             background: 'rgba(0, 20, 0, 0.1)', // Subtle backing
@@ -932,15 +932,17 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const pendingShotRef = useRef(false);
   const bulletSpawnYRef = useRef(SHOOTER_WORLD_POS.y);
   const bulletSpawnXRef = useRef(SHOOTER_WORLD_POS.x);
+  const playerBoundsRef = useRef({ minX: 0, maxX: 0, minY: 0, height: 0 });
+  const alignPendingRef = useRef(false);
+  const bulletSpawnXRef = useRef(SHOOTER_WORLD_POS.x);
   const playerScaleRef = useRef(1);
   const labelVRef = useRef(null);
   const labelColonRef = useRef(null);
   const npcImageRef = useRef(null);
   const healthLabelRef = useRef(null);
   const playerBoundsRef = useRef({ minX: 0, maxX: 0, minY: 0, height: 0 });
-  const [healthBarWidth, setHealthBarWidth] = useState(null);
   const alignPendingRef = useRef(false);
-
+  const [healthBarWidth, setHealthBarWidth] = useState(null);
   useLayoutEffect(() => {
     const updateBarWidth = () => {
       if (healthLabelRef.current) {
@@ -977,7 +979,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const THREE = window.THREE;
     if (!THREE) return;
 
-    const layoutBounds = isMobile ? { left: -42, right: -8 } : { left: -60, right: -20 };
+    const layoutBounds = isMobile ? { left: -20, right: -8 } : { left: -60, right: -20 };
     const bulletHeightRatio = 0.5;
 
     // SCENE
@@ -1076,16 +1078,73 @@ const GamePhase = ({ pointData, onGameOver }) => {
     entityRef.current = cloud;
 
     const playerHeight = box.max.y - box.min.y;
-    const playerWidth = box.max.x - box.min.x;
-    const scaledMinX = box.min.x;
-    const scaledMaxX = box.max.x;
     playerBoundsRef.current = {
-      minX: scaledMinX,
-      maxX: scaledMaxX,
+      minX: box.min.x,
+      maxX: box.max.x,
       minY: box.min.y,
       height: playerHeight
     };
-    bulletSpawnYRef.current = box.min.y + playerHeight * bulletHeightRatio + cloud.position.y;
+    const setDefaultBulletSpawn = () => {
+      bulletSpawnXRef.current = SHOOTER_WORLD_POS.x;
+      bulletSpawnYRef.current = box.min.y + playerHeight * bulletHeightRatio + cloud.position.y;
+    };
+
+    const screenToWorld = (pixelX, pixelY, targetZ = 0) => {
+      const ndcX = (pixelX / window.innerWidth) * 2 - 1;
+      const ndcY = -(pixelY / window.innerHeight) * 2 + 1;
+      const vector = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera);
+      const dir = vector.sub(camera.position).normalize();
+      const distance = (targetZ - camera.position.z) / dir.z;
+      return camera.position.clone().add(dir.multiplyScalar(distance));
+    };
+
+    const alignPlayerToHUD = () => {
+      if (!isMobile) return true;
+      const bounds = playerBoundsRef.current;
+      const vRect = labelVRef.current?.getBoundingClientRect();
+      const colonRect = labelColonRef.current?.getBoundingClientRect();
+      const npcRect = npcImageRef.current?.getBoundingClientRect();
+      if (!bounds || !vRect || !colonRect || !npcRect) return false;
+
+      const leftWorld = screenToWorld(vRect.left, vRect.top + vRect.height / 2).x;
+      const rightWorld = screenToWorld(colonRect.left, colonRect.top + colonRect.height / 2).x;
+      const currentLeft = bounds.minX + cloud.position.x;
+      const currentRight = bounds.maxX + cloud.position.x;
+      let offset = leftWorld - currentLeft;
+      cloud.position.x += offset;
+      const overshoot = (bounds.maxX + cloud.position.x) - rightWorld;
+      if (overshoot > 0) {
+        cloud.position.x -= overshoot;
+      }
+
+      const bulletWorld = screenToWorld(npcRect.left, npcRect.top + npcRect.height / 2);
+      bulletSpawnXRef.current = bulletWorld.x;
+      bulletSpawnYRef.current = bulletWorld.y;
+      return true;
+    };
+
+    const requestAlignment = () => {
+      if (isMobile) {
+        alignPendingRef.current = true;
+      } else {
+        setDefaultBulletSpawn();
+      }
+    };
+
+    const screenToWorld = (pixelX, pixelY, targetZ = 0) => {
+      const ndcX = (pixelX / window.innerWidth) * 2 - 1;
+      const ndcY = -(pixelY / window.innerHeight) * 2 + 1;
+      const vector = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera);
+      const dir = vector.sub(camera.position).normalize();
+      const distance = (targetZ - camera.position.z) / dir.z;
+      return camera.position.clone().add(dir.multiplyScalar(distance));
+    };
+
+    const requestAlignment = () => {
+      if (isMobile) {
+        alignPendingRef.current = true;
+      }
+    };
 
     // ----------------------------
     // EYE ATTACHMENT LOGIC (EDGE DETECTION)
@@ -1736,12 +1795,17 @@ const GamePhase = ({ pointData, onGameOver }) => {
         </div>
 
         {/* POINT CLOUD HEALTH BAR */}
-        <PointCloudHealthBar health={health} lastHit={lastHitTime} isMobile={isMobile} />
+        <PointCloudHealthBar
+          health={health}
+          lastHit={lastHitTime}
+          isMobile={isMobile}
+          widthOverride={healthBarWidth}
+        />
 
         {/* Health Text Label */}
-        <div className="neural-text" style={healthLabelStyle}>
+        <div className="neural-text" style={healthLabelStyle} ref={healthLabelRef}>
             <span style={{ fontSize: symbolFontSize }}>∿</span> 
-            VESSEL SYNAPSE: {health}% 
+            <span ref={labelVRef}>V</span>ESSEL SYNAPSE<span ref={labelColonRef}>:</span> {health}% 
         </div>
       </div>
     </div>
