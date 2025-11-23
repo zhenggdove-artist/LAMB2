@@ -5,11 +5,14 @@ import { createRoot } from 'react-dom/client';
 // CONFIGURATION & ASSETS
 // ==========================================
 
-// Local sprite sequences used for the HUD NPC and its bullets
+// Local sprite sequences used for the HUD NPC
 const ASSETS = {
   SHOOTER_NPC_FRAMES: Array.from({ length: 19 }, (_, i) => `assets/player/player${i + 1}.PNG`),
-  BULLET_FRAMES: Array.from({ length: 4 }, (_, i) => `assets/bullet/BULLET${i + 1}.PNG`),
 };
+
+const MOBILE_BREAKPOINT = 768;
+const TARGET_ASPECT_RATIO = 16 / 9;
+const BULLET_POINT_COUNT = 80;
 
 // Generic sprite sheet animator for <img> elements
 const SpriteAnimator = ({ frames, fps = 12, style, className = '', alt = '', ...imgProps }) => {
@@ -816,9 +819,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const bulletsRef = useRef([]);
   const bloodParticlesRef = useRef([]);
   const isDeadRef = useRef(false);
-  const bulletTexturesRef = useRef([]);
-  const bulletMaterialParamsRef = useRef({ depthTest: false });
-  const BULLET_FRAME_DURATION = 80; // ms per bullet frame
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -849,23 +849,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const THREE = window.THREE;
     if (!THREE) return;
 
-    const textureLoader = new THREE.TextureLoader();
-    bulletTexturesRef.current = ASSETS.BULLET_FRAMES.map((path) => {
-      const texture = textureLoader.load(path);
-      if (texture) {
-        if (THREE.sRGBEncoding) texture.encoding = THREE.sRGBEncoding;
-        texture.flipY = false;
-        texture.needsUpdate = true;
-      }
-      return texture;
-    }).filter(Boolean);
-    bulletMaterialParamsRef.current = {
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      color: 0xffffff
-    };
-
     // SCENE
     const scene = new THREE.Scene();
     // Deep Space/Void Background
@@ -876,9 +859,56 @@ const GamePhase = ({ pointData, onGameOver }) => {
     camera.position.z = 45;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
+    
+    const isMobileViewport = () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+    const computeRendererViewport = () => {
+      const isMobile = isMobileViewport();
+      if (!isMobile) {
+        return { width: window.innerWidth, height: window.innerHeight, isMobile };
+      }
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      let width = viewportWidth;
+      let height = width * (9 / 16);
+      if (height > viewportHeight) {
+        height = viewportHeight;
+        width = height * TARGET_ASPECT_RATIO;
+      }
+      return { width, height, isMobile };
+    };
+    const applyRendererViewport = () => {
+      const { width, height, isMobile } = computeRendererViewport();
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      const canvas = renderer.domElement;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      canvas.style.maxWidth = '100%';
+      canvas.style.maxHeight = '100%';
+      canvas.style.display = 'block';
+      if (isMobile) {
+        canvas.style.position = 'absolute';
+        canvas.style.top = '50%';
+        canvas.style.left = '50%';
+        canvas.style.transform = 'translate(-50%, -50%)';
+      } else {
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.transform = 'none';
+      }
+    };
+    applyRendererViewport();
     mountRef.current?.appendChild(renderer.domElement);
+    
+    const handleResize = () => {
+      renderer.setPixelRatio(window.devicePixelRatio);
+      applyRendererViewport();
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
 
     const disposeBullet = (sceneObj, bullet) => {
       if (!bullet) return;
@@ -1197,9 +1227,14 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
     const onMouseClick = (event) => {
       if (isDeadRef.current) return;
+      const canvasRect = renderer.domElement.getBoundingClientRect();
+      const rectWidth = canvasRect.width || window.innerWidth;
+      const rectHeight = canvasRect.height || window.innerHeight;
+      const relativeX = (event.clientX - canvasRect.left) / rectWidth;
+      const relativeY = (event.clientY - canvasRect.top) / rectHeight;
 
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      mouse.x = relativeX * 2 - 1;
+      mouse.y = -(relativeY * 2 - 1);
 
       raycaster.setFromCamera(mouse, camera);
       const hitTestGeo = new THREE.PlaneGeometry(40, 40);
@@ -1222,7 +1257,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       }
     };
 
-    window.addEventListener('mousedown', onMouseClick);
+    window.addEventListener('pointerdown', onMouseClick);
 
     // ----------------------------
     // GAME LOOP
@@ -1381,21 +1416,23 @@ const GamePhase = ({ pointData, onGameOver }) => {
           for (let i = bulletsRef.current.length - 1; i >= 0; i--) {
               const b = bulletsRef.current[i];
               b.position.x -= 0.5; // SWAPPED: Moves Right to Left
-              const textures = bulletTexturesRef.current;
-              if (textures.length > 1) {
-                  const data = b.userData || (b.userData = {});
-                  if (data.lastFrameTime === undefined) {
-                      data.lastFrameTime = time;
-                  }
-                  if (time - data.lastFrameTime >= BULLET_FRAME_DURATION) {
-                      data.frameIndex = ((data.frameIndex || 0) + 1) % textures.length;
-                      if (textures[data.frameIndex]) {
-                          b.material.map = textures[data.frameIndex];
-                          b.material.needsUpdate = true;
-                      }
-                      data.lastFrameTime = time;
-                  }
+              const data = b.userData || (b.userData = {});
+              if (data.pulseOffset === undefined) {
+                  data.pulseOffset = Math.random() * Math.PI * 2;
               }
+              const pulse = time * 0.003 + data.pulseOffset;
+              if (b.material?.color?.setHSL) {
+                  const hue = 0.02 + 0.05 * Math.sin(pulse);
+                  const lightness = 0.45 + 0.25 * Math.sin(pulse * 2.0);
+                  const clampedLight = Math.max(0.2, Math.min(0.85, lightness));
+                  b.material.color.setHSL(hue, 1, clampedLight);
+                  b.material.opacity = 0.55 + 0.35 * Math.abs(Math.sin(pulse * 1.5));
+              }
+              if (data.baseY === undefined) {
+                  data.baseY = b.position.y;
+              }
+              b.rotation.z += 0.08;
+              b.position.y = data.baseY + Math.sin(pulse * 2.0) * 1.2;
 
               // Hit Detection (Player is at x = -35)
               if (b.position.x < -25 && b.position.x > -45 && Math.abs(b.position.y) < 10) {
@@ -1425,7 +1462,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
     animationFrameRef.current = requestAnimationFrame(animate);
 
     return () => {
-      window.removeEventListener('mousedown', onMouseClick);
+      window.removeEventListener('pointerdown', onMouseClick);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
       cancelAnimationFrame(animationFrameRef.current);
       if(mountRef.current) mountRef.current.innerHTML = '';
       const cleanupScene = sceneRef.current;
@@ -1437,33 +1476,63 @@ const GamePhase = ({ pointData, onGameOver }) => {
       bulletsRef.current = [];
       horrorGrowthsRef.current = [];
       bloodParticlesRef.current = [];
-      bulletTexturesRef.current.forEach((tex) => tex?.dispose && tex.dispose());
-      bulletTexturesRef.current = [];
     };
   }, []);
 
   const createBullet = useCallback((scene) => {
       const THREE = window.THREE;
-      if (!THREE || bulletTexturesRef.current.length === 0) return null;
+      if (!THREE) return null;
 
-      const material = new THREE.SpriteMaterial({
-          map: bulletTexturesRef.current[0],
-          ...bulletMaterialParamsRef.current,
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(BULLET_POINT_COUNT * 3);
+      const colors = new Float32Array(BULLET_POINT_COUNT * 3);
+      const palette = [
+        new THREE.Color(0xfff066),
+        new THREE.Color(0xffa000),
+        new THREE.Color(0xff2d2d)
+      ];
+
+      for (let i = 0; i < BULLET_POINT_COUNT; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const radius = 0.8 * Math.random();
+          const zOffset = (Math.random() - 0.5) * 0.6;
+          positions[i * 3] = Math.cos(angle) * radius;
+          positions[i * 3 + 1] = Math.sin(angle) * radius;
+          positions[i * 3 + 2] = zOffset;
+
+          const color = palette[Math.floor(Math.random() * palette.length)];
+          colors[i * 3] = color.r;
+          colors[i * 3 + 1] = color.g;
+          colors[i * 3 + 2] = color.b;
+      }
+
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+      const material = new THREE.PointsMaterial({
+          size: 1.2,
+          sizeAttenuation: true,
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          vertexColors: true
       });
-      material.needsUpdate = true;
 
-      const sprite = new THREE.Sprite(material);
-      sprite.scale.set(2.5, 2.5, 1);
-      sprite.position.set(25, (Math.random() * 10) - 5, 0);
-      sprite.userData = { frameIndex: 0, lastFrameTime: performance.now() };
-      scene.add(sprite);
-      return sprite;
+      const cloud = new THREE.Points(geometry, material);
+      cloud.position.set(25, (Math.random() * 10) - 5, 0);
+      cloud.userData = { 
+        pulseOffset: Math.random() * Math.PI * 2,
+        baseY: cloud.position.y
+      };
+      scene.add(cloud);
+      return cloud;
   }, []);
 
   return (
     <>
       {/* 3D Container */}
-      <div ref={mountRef} style={{ width: '100vw', height: '100vh', position: 'absolute', top: 0, left: 0, zIndex: 1 }} />
+      <div ref={mountRef} style={{ width: '100vw', height: '100vh', position: 'absolute', top: 0, left: 0, zIndex: 1, backgroundColor: '#000', overflow: 'hidden' }} />
       
       {/* HUD Layer - FUTURISTIC/NEURAL STYLE */}
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
