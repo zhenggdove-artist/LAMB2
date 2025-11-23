@@ -22,7 +22,7 @@ const PLAYER_CONFIG = {
 const PLAYER_HIT_RADIUS = 1.2;
 // NPC 子彈生成點與大小：桌面與手機分開調
 const SHOOTER_BULLET_CONFIG = {
-  desktop: { origin: { x: 30, y: 5, z: 0 }, radius: 0.8, size: 1.2 },
+  desktop: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
   mobile: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
 };
 const BULLET_SPEED = 0.6; // 子彈朝玩家移動的速度
@@ -940,6 +940,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const horrorGrowthsRef = useRef([]); 
   const bulletsRef = useRef([]);
   const collisionPointsRef = useRef([]); // 碰撞採樣點（玩家局部座標）
+  const clickCenterIndexRef = useRef(null); // 最近一次點擊對應的點雲索引
   const bloodParticlesRef = useRef([]);
   const isDeadRef = useRef(false);
   const pendingShotRef = useRef(false);
@@ -1195,7 +1196,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
         // 3. Logic: If less than 5 roots, spawn a new one
         if (batch.meshes.length < TENTACLE_SETTINGS.perBatch) {
-             createSingleTentacle(batch.centerIndex, batch.targetScale);
+             const chosenIndex = clickCenterIndexRef.current ?? batch.centerIndex;
+             createSingleTentacle(chosenIndex, batch.targetScale);
         } else {
              // 4. If we have 5 roots, GROW them
              batch.targetScale += TENTACLE_SETTINGS.growthPerClick; // Grow by config per click
@@ -1339,6 +1341,25 @@ const GamePhase = ({ pointData, onGameOver }) => {
     // ----------------------------
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
+    const setClickCenterFromWorldPoint = (worldPoint) => {
+      if (!entityRef.current || !pointData?.length) return;
+      const local = entityRef.current.worldToLocal(worldPoint.clone());
+      let nearestIdx = 0;
+      let nearestD2 = Infinity;
+      const totalPoints = pointData.length / 3;
+      const stride = Math.max(1, Math.floor(totalPoints / 2000)); // 降低計算量
+      for (let i = 0; i < totalPoints; i += stride) {
+        const dx = local.x - pointData[i * 3];
+        const dy = local.y - pointData[i * 3 + 1];
+        const dz = local.z - pointData[i * 3 + 2];
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < nearestD2) {
+          nearestD2 = d2;
+          nearestIdx = i;
+        }
+      }
+      clickCenterIndexRef.current = nearestIdx;
+    };
 
     const onMouseClick = (event) => {
       if (isDeadRef.current) return;
@@ -1359,6 +1380,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       
       const intersects = raycaster.intersectObject(hitTestMesh);
       if (intersects.length > 0) {
+        setClickCenterFromWorldPoint(intersects[0].point);
         healIntensityRef.current = 1.0;
         setHealth(prev => {
             const newHealth = prev + 5;
