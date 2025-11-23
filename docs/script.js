@@ -22,7 +22,7 @@ const PLAYER_CONFIG = {
 const PLAYER_HIT_RADIUS = 1.2;
 // NPC 子彈生成點與大小：桌面與手機分開調
 const SHOOTER_BULLET_CONFIG = {
-  desktop: { origin: { x: 90, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
+  desktop: { origin: { x: 40, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
   mobile: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
 };
 const BULLET_SPEED = 0.6; // 子彈朝玩家移動的速度
@@ -40,8 +40,10 @@ const TENTACLE_SETTINGS = {
   growthPerClick: 0.3, // 每次點擊增加的長度倍率
   baseLength: 5, // 觸手基礎長度
   lengthJitter: 10, // 觸手長度隨機附加
-  towardCameraBias: 0.8, // 越大越朝鏡頭/玩家（+Z）方向
+  towardCameraBias: 0.8, // 越大越朝鏡頭/玩家（+Z）方向（實際會隨機正負，產生朝內/朝外變化）
   followScaleStrength: 3, // 觸手越靠近鏡頭越放大的強度
+  wiggleChaosRange: [0.7, 1.6], // 蠕動混亂度倍率
+  dirChaosXY: 1.2, // XY 隨機擴散倍率
 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
@@ -1229,10 +1231,11 @@ const GamePhase = ({ pointData, onGameOver }) => {
         const pathPoints = [];
         const numSegments = 25;
         const length = TENTACLE_SETTINGS.baseLength + Math.random() * TENTACLE_SETTINGS.lengthJitter; 
+        // 方向增加變化：XY 擴散放大，Z 方向隨機正負（朝玩家/遠離玩家皆有）
         const dir = new THREE.Vector3(
-            (Math.random()-0.5) * 2, 
-            (Math.random()-0.5) * 2, 
-            Math.random() * TENTACLE_SETTINGS.towardCameraBias + 0.2 // 偏向鏡頭（+Z）
+            (Math.random()-0.5) * 2 * TENTACLE_SETTINGS.dirChaosXY, 
+            (Math.random()-0.5) * 2 * TENTACLE_SETTINGS.dirChaosXY, 
+            (Math.random() < 0.5 ? -1 : 1) * (0.2 + Math.random() * TENTACLE_SETTINGS.towardCameraBias)
         ).normalize();
 
         for(let i=0; i<numSegments; i++) {
@@ -1296,8 +1299,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
             tipColor,
             restPoints: pathPoints.map(p => p.clone()),
             seed: Math.random() * 1000,
-            speed: 1.0 + Math.random(),
+            speed: 1.0 + Math.random() * 1.2,
             spiralFactor: (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 3),
+            wiggleChaos: TENTACLE_SETTINGS.wiggleChaosRange[0] + Math.random() * (TENTACLE_SETTINGS.wiggleChaosRange[1] - TENTACLE_SETTINGS.wiggleChaosRange[0]),
             originalColors: originalColors, // Keep Ref
             createdAt: performance.now() // For Fade-In
         };
@@ -1455,7 +1459,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
           horrorGrowthsRef.current.forEach(g => {
               if (g.type === 'tentacle_cloud') {
-                  const { curve, restPoints, seed, speed, mesh, spiralFactor, rootColor, tipColor, originalColors, createdAt } = g;
+                  const { curve, restPoints, seed, speed, mesh, spiralFactor, rootColor, tipColor, originalColors, createdAt, wiggleChaos } = g;
                   
                   // 1. Smooth Growth (Tween scale) - 使用邏輯縮放避免累乘爆炸
                   let logicalScale = mesh.userData.logicalScale ?? mesh.scale.x;
@@ -1475,14 +1479,15 @@ const GamePhase = ({ pointData, onGameOver }) => {
                       if (i === 0) continue; 
                       
                       const rest = restPoints[i];
-                      const amp = (i / curve.points.length) * 3.0; // Increased amplitude at tips
+                      const amp = (i / curve.points.length) * 3.0 * (wiggleChaos ?? 1); // Increased amplitude at tips
                       
                       const t = seconds * speed + i * 0.15;
-                      const spiralX = Math.sin(t) * Math.cos(t * 0.5) * spiralFactor * 0.3;
-                      const spiralY = Math.cos(t) * Math.sin(t * 0.5) * spiralFactor * 0.3;
-                      const nx = Math.sin(seconds * speed + i + seed);
-                      const ny = Math.cos(seconds * speed * 1.1 + i + seed);
-                      const nz = Math.sin(seconds * speed * 0.7 + seed);
+                      const chaosPhase = seed + i * 0.37;
+                      const spiralX = Math.sin(t + chaosPhase * 0.3) * Math.cos(t * 0.5 + chaosPhase) * spiralFactor * 0.35;
+                      const spiralY = Math.cos(t + chaosPhase * 0.5) * Math.sin(t * 0.5 + chaosPhase) * spiralFactor * 0.35;
+                      const nx = Math.sin(seconds * speed * (0.8 + wiggleChaos * 0.4) + i + seed);
+                      const ny = Math.cos(seconds * speed * (1.1 + wiggleChaos * 0.3) + i + seed * 1.2);
+                      const nz = Math.sin(seconds * speed * (0.7 + wiggleChaos * 0.2) + seed * 0.7 + i * 0.2);
 
                       curve.points[i].x = rest.x + nx * amp + spiralX;
                       curve.points[i].y = rest.y + ny * amp + spiralY;
