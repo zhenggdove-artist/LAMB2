@@ -16,7 +16,6 @@ const BULLET_POINT_COUNT = 80;
 const SHOOTER_WORLD_POS = { x: 25, y: 0, z: 0 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
-const BULLET_COOLDOWN_MS = 2000;
 
 const useIsMobileViewport = () => {
   const getMatches = () => {
@@ -919,7 +918,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const healIntensityRef = useRef(0);
   const hitIntensityRef = useRef(0);
   const animationFrameRef = useRef(0);
-  const lastBulletTimeRef = useRef(-BULLET_COOLDOWN_MS);
 
   // Config for Tentacle Aesthetics
   const MAX_RINGS = 60; // How many transverse rings
@@ -1611,11 +1609,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
   const handleShooterFrameChange = useCallback((frameIdx) => {
       if (frameIdx !== SHOOTER_FIRE_FRAME_INDEX) return;
-      const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-      if (now - lastBulletTimeRef.current >= BULLET_COOLDOWN_MS) {
-          lastBulletTimeRef.current = now;
-          pendingShotRef.current = true;
-      }
+      pendingShotRef.current = true;
   }, []);
 
   const healthColor = health > 100 ? '#ff00ff' : '#00ff00';
