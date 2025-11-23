@@ -40,8 +40,8 @@ const TENTACLE_SETTINGS = {
   growthPerClick: 0.3, // 每次點擊增加的長度倍率
   baseLength: 20, // 觸手基礎長度
   lengthJitter: 10, // 觸手長度隨機附加
-  towardCameraBias: 0.5, // 越大越朝鏡頭/玩家（+Z）方向
-  followScaleStrength: 0.9, // 觸手越靠近鏡頭越放大的強度
+  towardCameraBias: 0.9, // 越大越朝鏡頭/玩家（+Z）方向
+  followScaleStrength: 1.5, // 觸手越靠近鏡頭越放大的強度
 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
