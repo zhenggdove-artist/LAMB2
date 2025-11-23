@@ -18,12 +18,12 @@ const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
 const TENTACLE_MAX_RINGS = 60;
 const TENTACLE_POINTS_PER_RING = 30;
-const PX_TO_WORLD = 0.1; // Based on draw sampling (divide by 10)
+const PX_TO_WORLD = 0.1; // convert drawing pixels to world units
 const MOBILE_PLAYER_SHIFT_X = 1000 * PX_TO_WORLD;
 const MOBILE_PLAYER_SCALE = 0.5;
 const MOBILE_BULLET_SHIFT_X = -1000 * PX_TO_WORLD;
 const MOBILE_BULLET_SHIFT_Y = 360 * PX_TO_WORLD;
-const MOBILE_BULLET_SCALE = 0.5;
+const MOBILE_BULLET_SIZE = 0.6;
 
 const useIsMobileViewport = () => {
   const getMatches = () => {
@@ -935,7 +935,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const isDeadRef = useRef(false);
   const pendingShotRef = useRef(false);
   const bulletSpawnYRef = useRef(SHOOTER_WORLD_POS.y);
-  const bulletSpawnParamsRef = useRef({ x: SHOOTER_WORLD_POS.x, scale: 1 });
+  const bulletSpawnXRef = useRef(SHOOTER_WORLD_POS.x);
   const playerScaleRef = useRef(1);
 
   // INDEPENDENT EYE CONTROLLERS
@@ -965,14 +965,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const layoutBounds = isMobile ? { left: -42, right: -8 } : { left: -60, right: -20 };
     const bulletHeightRatio = 0.5;
     const playerShiftX = isMobile ? MOBILE_PLAYER_SHIFT_X : 0;
-    const basePlayerScale = isMobile ? MOBILE_PLAYER_SCALE : 1;
-    const bulletYOffset = isMobile ? MOBILE_BULLET_SHIFT_Y : 0;
-    const bulletSpawnX = SHOOTER_WORLD_POS.x + (isMobile ? MOBILE_BULLET_SHIFT_X : 0);
-    playerScaleRef.current = basePlayerScale;
-    bulletSpawnParamsRef.current = {
-      x: bulletSpawnX,
-      scale: isMobile ? MOBILE_BULLET_SCALE : 1
-    };
+    const playerScale = isMobile ? MOBILE_PLAYER_SCALE : 1;
+    const bulletShiftX = isMobile ? MOBILE_BULLET_SHIFT_X : 0;
+    const bulletShiftY = isMobile ? MOBILE_BULLET_SHIFT_Y : 0;
 
     // SCENE
     const scene = new THREE.Scene();
@@ -1066,13 +1061,15 @@ const GamePhase = ({ pointData, onGameOver }) => {
       targetX += desiredRight - projectedRight;
     }
     cloud.position.x = targetX + playerShiftX; 
+    cloud.scale.multiplyScalar(playerScale);
+    playerScaleRef.current = playerScale;
     scene.add(cloud);
     entityRef.current = cloud;
 
-    const playerHeight = box.max.y - box.min.y;
-    const scaledMinY = box.min.y * basePlayerScale;
-    const scaledHeight = playerHeight * basePlayerScale;
-    bulletSpawnYRef.current = cloud.position.y + scaledMinY + scaledHeight * bulletHeightRatio + bulletYOffset;
+    const playerHeight = (box.max.y - box.min.y) * playerScale;
+    const minY = box.min.y * playerScale;
+    bulletSpawnYRef.current = cloud.position.y + minY + playerHeight * bulletHeightRatio + bulletShiftY;
+    bulletSpawnXRef.current = SHOOTER_WORLD_POS.x + bulletShiftX;
 
     // ----------------------------
     // EYE ATTACHMENT LOGIC (EDGE DETECTION)
@@ -1526,12 +1523,10 @@ const GamePhase = ({ pointData, onGameOver }) => {
              // (Slow inhale, pause, fast exhale pattern simulation via interference)
              const breath = (Math.sin(seconds * 2.0) + Math.sin(seconds * 3.14) * 0.5) * 0.02;
              
-             const baseScale = 1.0 + Math.max(0, healthRef.current - 100) / 400.0;
-             const finalScale = baseScale + breath;
-             const playerScale = playerScaleRef.current || 1;
-             
-             const appliedScale = finalScale * playerScale;
-             entityRef.current.scale.set(appliedScale, appliedScale, appliedScale);
+            const baseScale = 1.0 + Math.max(0, healthRef.current - 100) / 400.0;
+            const finalScale = (baseScale + breath) * playerScaleRef.current;
+            
+            entityRef.current.scale.set(finalScale, finalScale, finalScale);
           }
 
           // BULLET LOGIC
@@ -1640,7 +1635,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
       const material = new THREE.PointsMaterial({
-          size: 0.9,
+          size: isMobile ? 0.6 : 1.2,
           sizeAttenuation: true,
           transparent: true,
           opacity: 0.85,
@@ -1649,19 +1644,20 @@ const GamePhase = ({ pointData, onGameOver }) => {
           vertexColors: true
       });
 
-      const spawnParams = bulletSpawnParamsRef.current || { x: SHOOTER_WORLD_POS.x, scale: 1 };
       const cloud = new THREE.Points(geometry, material);
-      cloud.position.set(spawnParams.x, bulletSpawnYRef.current, SHOOTER_WORLD_POS.z);
-      if (spawnParams.scale !== 1) {
-        cloud.scale.set(spawnParams.scale, spawnParams.scale, spawnParams.scale);
+      const spawnX = bulletSpawnXRef.current || SHOOTER_WORLD_POS.x;
+      let spawnY = bulletSpawnYRef.current;
+      cloud.position.set(spawnX, spawnY, SHOOTER_WORLD_POS.z);
+      if (isMobile) {
+        cloud.scale.set(MOBILE_BULLET_SIZE, MOBILE_BULLET_SIZE, MOBILE_BULLET_SIZE);
       }
       cloud.userData = { 
         pulseOffset: Math.random() * Math.PI * 2,
-        baseY: bulletSpawnYRef.current
+        baseY: spawnY
       };
       scene.add(cloud);
       return cloud;
-  }, [pointData, isMobile]);
+  }, []);
 
   const handleShooterFrameChange = useCallback((frameIdx) => {
       if (frameIdx !== SHOOTER_FIRE_FRAME_INDEX) return;
