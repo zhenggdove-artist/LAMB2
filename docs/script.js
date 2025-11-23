@@ -16,12 +16,12 @@ const BULLET_POINT_COUNT = 80;
 // 玩家在三維世界中的生成點/縮放：桌面與手機分開調
 const PLAYER_CONFIG = {
   desktop: { position: { x: -35, y: 0, z: 0 }, baseScale: 1.0 },
-  mobile: { position: { x: 0, y: 0, z: 0 }, baseScale: 0.9 },
+  mobile: { position: { x: -10, y: 0, z: 0 }, baseScale: 0.9 },
 };
 // NPC 子彈生成點與大小：桌面與手機分開調
 const SHOOTER_BULLET_CONFIG = {
   desktop: { origin: { x: 30, y: -10, z: 0 }, radius: 0.8, size: 1.2 },
-  mobile: { origin: { x: 10, y: 0, z: 0 }, radius: 0.5, size: 0.3 },
+  mobile: { origin: { x: 10, y: -5, z: 0 }, radius: 0.5, size: 0.2 },
 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
