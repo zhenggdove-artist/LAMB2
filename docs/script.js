@@ -940,10 +940,13 @@ const GamePhase = ({ pointData, onGameOver }) => {
     renderer.setPixelRatio(window.devicePixelRatio);
     
     const isMobileViewport = () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
-    const computeRendererViewport = () => ({
-      width: window.innerWidth,
-      height: window.innerHeight
-    });
+    const computeRendererViewport = () => {
+      const vv = window.visualViewport;
+      return {
+        width: vv?.width || window.innerWidth,
+        height: vv?.height || window.innerHeight
+      };
+    };
     const applyRendererViewport = () => {
       const { width, height } = computeRendererViewport();
       renderer.setSize(width, height, false);
@@ -951,11 +954,12 @@ const GamePhase = ({ pointData, onGameOver }) => {
       camera.updateProjectionMatrix();
       const canvas = renderer.domElement;
       canvas.style.width = '100vw';
-      canvas.style.height = '100vh';
+      canvas.style.height = '100dvh';
+      canvas.style.minHeight = '100vh';
       canvas.style.maxWidth = '100%';
       canvas.style.maxHeight = '100%';
       canvas.style.display = 'block';
-      canvas.style.position = 'absolute';
+      canvas.style.position = 'fixed';
       canvas.style.top = '0';
       canvas.style.left = '0';
       canvas.style.transform = 'none';
@@ -1624,10 +1628,22 @@ const GamePhase = ({ pointData, onGameOver }) => {
   return (
     <>
       {/* 3D Container */}
-      <div ref={mountRef} style={{ width: '100vw', height: '100vh', position: 'absolute', top: 0, left: 0, zIndex: 1, backgroundColor: '#000', overflow: 'hidden' }} />
+      <div
+        ref={mountRef}
+        style={{
+          width: '100vw',
+          height: '100dvh',
+          minHeight: '100vh',
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1,
+          backgroundColor: '#000',
+          overflow: 'hidden'
+        }}
+      />
       
       {/* HUD Layer - FUTURISTIC/NEURAL STYLE */}
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', minHeight: '100vh', pointerEvents: 'none', zIndex: 10 }}>
         
         {/* Shooter NPC - SWAPPED TO RIGHT */}
         <div style={npcStyle}>
@@ -1648,8 +1664,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
         {/* Health Text Label */}
         <div className="neural-text" style={healthLabelStyle}>
             <span style={{ fontSize: symbolFontSize }}>∿</span> 
-            VESSEL SYNAPSE: {health}% 
-            {health > 100 && <span className="horror-text" style={{ marginLeft: isMobile ? '6px' : '10px', fontSize: overgrowthFontSize }}>(OVERGROWTH)</span>}
+            VESSEL SYNAPSE: {health}%
         </div>
       </div>
     </>
