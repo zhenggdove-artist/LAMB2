@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // ==========================================
@@ -13,13 +13,9 @@ const ASSETS = {
 const MOBILE_BREAKPOINT = 768;
 const TARGET_ASPECT_RATIO = 16 / 9;
 const BULLET_POINT_COUNT = 80;
-const SHOOTER_WORLD_POS = { x: 25, y: -12, z: 0 };
+const SHOOTER_WORLD_POS = { x: 25, y: 0, z: 0 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
-const TENTACLE_MAX_RINGS = 60;
-const TENTACLE_POINTS_PER_RING = 30;
-const MOBILE_PLAYER_SCALE = 1;
-const MOBILE_BULLET_SIZE = 0.6;
 
 const useIsMobileViewport = () => {
   const getMatches = () => {
@@ -455,37 +451,6 @@ const generateCyberEye = (THREE, viewType) => {
     return geo;
 }
 
-const generatePupilGeometry = (THREE) => {
-    const openPos = [];
-    const closedPos = [];
-    const sizes = [];
-    const colors = [];
-    const ringCount = 36;
-    const radius = 0.28;
-
-    for (let i = 0; i < ringCount; i++) {
-        const angle = (i / ringCount) * Math.PI * 2;
-        const x = Math.cos(angle) * radius * 0.6;
-        const y = Math.sin(angle) * radius;
-        openPos.push(x, y, 0);
-        closedPos.push(x * 0.1, 0, 0);
-        sizes.push(0.05);
-        colors.push(0, 0, 0);
-    }
-    openPos.push(0, 0, 0);
-    closedPos.push(0, 0, 0);
-    sizes.push(0.08);
-    colors.push(0, 0, 0);
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(openPos, 3));
-    geo.setAttribute('aOpenPos', new THREE.Float32BufferAttribute(openPos, 3));
-    geo.setAttribute('aClosedPos', new THREE.Float32BufferAttribute(closedPos, 3));
-    geo.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
-    geo.setAttribute('customColor', new THREE.Float32BufferAttribute(colors, 3));
-    return geo;
-};
-
 
 // Custom helper to generate ringed points along a curve
 const generateRingedPoints = (
@@ -545,7 +510,7 @@ const generateRingedPoints = (
 // ==========================================
 
 // --- DYNAMIC PARTICLE HEALTH BAR ---
-const PointCloudHealthBar = ({ health, lastHit, isMobile = false, widthOverride }) => {
+const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
     const canvasRef = useRef(null);
     const healthRef = useRef(health); 
     const displayedHealthRef = useRef(health); // For fluid animation
@@ -712,19 +677,19 @@ const PointCloudHealthBar = ({ health, lastHit, isMobile = false, widthOverride 
         return () => cancelAnimationFrame(reqRef.current);
     }, []);
 
-    const containerWidth = widthOverride ?? (isMobile ? '25vw' : '600px');
-    const containerHeight = isMobile ? '18px' : '40px';
+    const containerWidth = isMobile ? '50vw' : '600px';
+    const containerHeight = isMobile ? '28px' : '40px';
     const containerTop = isMobile ? '20px' : '30px';
     const containerLeft = isMobile ? '20px' : '30px';
-    const canvasWidth = isMobile ? 600 : 1200;
-    const canvasHeight = isMobile ? 40 : 80;
+    const canvasWidth = isMobile ? 800 : 1200;
+    const canvasHeight = isMobile ? 60 : 80;
 
     return (
         <div style={{
             position: 'absolute',
             top: containerTop,
             left: containerLeft,
-            width: typeof containerWidth === 'number' ? `${containerWidth}px` : containerWidth, 
+            width: containerWidth, 
             height: containerHeight,
             borderBottom: '1px solid rgba(0,255,0,0.2)',
             background: 'rgba(0, 20, 0, 0.1)', // Subtle backing
@@ -749,6 +714,7 @@ const DrawingPhase = ({ onFinish }) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // High DPI Canvas
     canvas.width = 600;
     canvas.height = 600;
     canvas.style.width = '300px';
@@ -761,7 +727,9 @@ const DrawingPhase = ({ onFinish }) => {
       ctx.strokeStyle = 'black';
       ctx.lineWidth = 4;
       contextRef.current = ctx;
-      ctx.fillStyle = '#E1C4C4';
+      
+      // Clear white
+      ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, 300, 300);
     }
   }, []);
@@ -879,9 +847,9 @@ const DrawingPhase = ({ onFinish }) => {
       alignItems: 'center', 
       justifyContent: 'center', 
       height: '100vh',
-      background: 'radial-gradient(circle at top, rgba(20,20,20,0.95), #050505)'
+      background: '#111'
     }}>
-      <h2 className="neural-text" style={{color: '#00ff00', textTransform: 'uppercase', fontSize: '2rem', marginBottom: '20px'}}>WHAT ARE YOU</h2>
+      <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
       <canvas
         ref={canvasRef}
         onPointerDown={startDrawing}
@@ -889,14 +857,14 @@ const DrawingPhase = ({ onFinish }) => {
         onPointerMove={draw}
         onPointerLeave={finishDrawing}
         onPointerCancel={finishDrawing}
-        style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.25)' }}
+        style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: 'white', touchAction: 'none' }}
       />
       <button 
         onClick={handleFinish}
         className="neural-text"
         style={{
-          marginTop: '25px',
-          background: 'rgba(0,0,0,0.4)',
+          marginTop: '20px',
+          background: 'transparent',
           color: '#00ff00',
           border: '1px solid #00ff00',
           padding: '10px 30px',
@@ -930,30 +898,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const bloodParticlesRef = useRef([]);
   const isDeadRef = useRef(false);
   const pendingShotRef = useRef(false);
-  const bulletSpawnYRef = useRef(SHOOTER_WORLD_POS.y);
-  const bulletSpawnXRef = useRef(SHOOTER_WORLD_POS.x);
-  const playerBoundsRef = useRef({ minX: 0, maxX: 0, minY: 0, height: 0 });
-  const alignPendingRef = useRef(false);
-  const bulletSpawnXRef = useRef(SHOOTER_WORLD_POS.x);
-  const playerScaleRef = useRef(1);
-  const labelVRef = useRef(null);
-  const labelColonRef = useRef(null);
-  const npcImageRef = useRef(null);
-  const healthLabelRef = useRef(null);
-  const playerBoundsRef = useRef({ minX: 0, maxX: 0, minY: 0, height: 0 });
-  const alignPendingRef = useRef(false);
-  const [healthBarWidth, setHealthBarWidth] = useState(null);
-  useLayoutEffect(() => {
-    const updateBarWidth = () => {
-      if (healthLabelRef.current) {
-        const rect = healthLabelRef.current.getBoundingClientRect();
-        setHealthBarWidth(rect.width);
-      }
-    };
-    updateBarWidth();
-    window.addEventListener('resize', updateBarWidth);
-    return () => window.removeEventListener('resize', updateBarWidth);
-  }, [isMobile, health]);
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -975,12 +919,13 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const hitIntensityRef = useRef(0);
   const animationFrameRef = useRef(0);
 
+  // Config for Tentacle Aesthetics
+  const MAX_RINGS = 60; // How many transverse rings
+  const POINTS_PER_RING = 30; // Points in one circle
+
   useEffect(() => {
     const THREE = window.THREE;
     if (!THREE) return;
-
-    const layoutBounds = isMobile ? { left: -42, right: -8 } : { left: -60, right: -20 };
-    const bulletHeightRatio = 0.5;
 
     // SCENE
     const scene = new THREE.Scene();
@@ -994,12 +939,24 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     
-    const computeRendererViewport = () => ({
-      width: window.innerWidth,
-      height: window.innerHeight
-    });
+    const isMobileViewport = () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+    const computeRendererViewport = () => {
+      const isMobile = isMobileViewport();
+      if (!isMobile) {
+        return { width: window.innerWidth, height: window.innerHeight, isMobile };
+      }
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      let width = viewportWidth;
+      let height = width * (9 / 16);
+      if (height > viewportHeight) {
+        height = viewportHeight;
+        width = height * TARGET_ASPECT_RATIO;
+      }
+      return { width, height, isMobile };
+    };
     const applyRendererViewport = () => {
-      const { width, height } = computeRendererViewport();
+      const { width, height, isMobile } = computeRendererViewport();
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
@@ -1009,9 +966,17 @@ const GamePhase = ({ pointData, onGameOver }) => {
       canvas.style.maxWidth = '100%';
       canvas.style.maxHeight = '100%';
       canvas.style.display = 'block';
-      canvas.style.position = 'absolute';
-      canvas.style.left = '0';
-      canvas.style.top = '0';
+      if (isMobile) {
+        canvas.style.position = 'absolute';
+        canvas.style.top = '50%';
+        canvas.style.left = '50%';
+        canvas.style.transform = 'translate(-50%, -50%)';
+      } else {
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.transform = 'none';
+      }
     };
     applyRendererViewport();
     mountRef.current?.appendChild(renderer.domElement);
@@ -1064,87 +1029,15 @@ const GamePhase = ({ pointData, onGameOver }) => {
     });
 
     const cloud = new THREE.Points(geometry, material);
-    geometry.computeBoundingBox();
-    const box = geometry.boundingBox;
-    const desiredLeft = layoutBounds.left;
-    const desiredRight = layoutBounds.right;
-    let targetX = desiredLeft - box.min.x;
-    const projectedRight = box.max.x + targetX;
-    if (projectedRight > desiredRight) {
-      targetX += desiredRight - projectedRight;
-    }
-    cloud.position.x = targetX; 
+    // [MODIFIED] Moved player further Left to avoid center crowding
+    // Original: -15. New: -35. 
+    // Since drawing width is approx +/- 30, this puts right edge around X=-5
+    cloud.position.x = -35; 
     scene.add(cloud);
     entityRef.current = cloud;
 
-    const playerHeight = box.max.y - box.min.y;
-    playerBoundsRef.current = {
-      minX: box.min.x,
-      maxX: box.max.x,
-      minY: box.min.y,
-      height: playerHeight
-    };
-    const setDefaultBulletSpawn = () => {
-      bulletSpawnXRef.current = SHOOTER_WORLD_POS.x;
-      bulletSpawnYRef.current = box.min.y + playerHeight * bulletHeightRatio + cloud.position.y;
-    };
-
-    const screenToWorld = (pixelX, pixelY, targetZ = 0) => {
-      const ndcX = (pixelX / window.innerWidth) * 2 - 1;
-      const ndcY = -(pixelY / window.innerHeight) * 2 + 1;
-      const vector = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera);
-      const dir = vector.sub(camera.position).normalize();
-      const distance = (targetZ - camera.position.z) / dir.z;
-      return camera.position.clone().add(dir.multiplyScalar(distance));
-    };
-
-    const alignPlayerToHUD = () => {
-      if (!isMobile) return true;
-      const bounds = playerBoundsRef.current;
-      const vRect = labelVRef.current?.getBoundingClientRect();
-      const colonRect = labelColonRef.current?.getBoundingClientRect();
-      const npcRect = npcImageRef.current?.getBoundingClientRect();
-      if (!bounds || !vRect || !colonRect || !npcRect) return false;
-
-      const leftWorld = screenToWorld(vRect.left, vRect.top + vRect.height / 2).x;
-      const rightWorld = screenToWorld(colonRect.left, colonRect.top + colonRect.height / 2).x;
-      const currentLeft = bounds.minX + cloud.position.x;
-      const currentRight = bounds.maxX + cloud.position.x;
-      let offset = leftWorld - currentLeft;
-      cloud.position.x += offset;
-      const overshoot = (bounds.maxX + cloud.position.x) - rightWorld;
-      if (overshoot > 0) {
-        cloud.position.x -= overshoot;
-      }
-
-      const bulletWorld = screenToWorld(npcRect.left, npcRect.top + npcRect.height / 2);
-      bulletSpawnXRef.current = bulletWorld.x;
-      bulletSpawnYRef.current = bulletWorld.y;
-      return true;
-    };
-
-    const requestAlignment = () => {
-      if (isMobile) {
-        alignPendingRef.current = true;
-      } else {
-        setDefaultBulletSpawn();
-      }
-    };
-
-    const screenToWorld = (pixelX, pixelY, targetZ = 0) => {
-      const ndcX = (pixelX / window.innerWidth) * 2 - 1;
-      const ndcY = -(pixelY / window.innerHeight) * 2 + 1;
-      const vector = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera);
-      const dir = vector.sub(camera.position).normalize();
-      const distance = (targetZ - camera.position.z) / dir.z;
-      return camera.position.clone().add(dir.multiplyScalar(distance));
-    };
-
-    const requestAlignment = () => {
-      if (isMobile) {
-        alignPendingRef.current = true;
-      }
-    };
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
 
     // ----------------------------
     // EYE ATTACHMENT LOGIC (EDGE DETECTION)
@@ -1167,8 +1060,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
     // Filter: Top 5% of X values are considered "Right Edge"
     const rightEdgeThresholdIndex = Math.floor(candidates.length * 0.05);
     const rightEdgePoints = candidates.slice(0, Math.max(20, rightEdgeThresholdIndex));
-
-    const eyeScale = isMobile ? 2.25 : 1.5;
 
     const createEye = (type) => {
         let px=0, py=0, pz=0;
@@ -1222,20 +1113,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
         
         const mesh = new THREE.Points(eyeGeo, eyeMat);
         mesh.position.set(px, py, pz + 1.0); 
-        mesh.scale.set(eyeScale, eyeScale, eyeScale);
-        if (type === 'front') {
-            const pupilGeo = generatePupilGeometry(THREE);
-            const pupilMat = new THREE.ShaderMaterial({
-                uniforms: eyeUniforms,
-                vertexShader: eyeVertexShader,
-                fragmentShader: eyeFragmentShader,
-                blending: THREE.AdditiveBlending,
-                depthTest: false,
-                transparent: true
-            });
-            const pupil = new THREE.Points(pupilGeo, pupilMat);
-            mesh.add(pupil);
-        }
+        mesh.scale.set(1.5, 1.5, 1.5);
         cloud.add(mesh);
 
         // Register controller
@@ -1338,7 +1216,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
         // 3. Generate Ring Data (High Density)
         const tipColor = new THREE.Color(0xFF007F); // Hot Pink
         const { points, sizes, colors } = generateRingedPoints(
-             THREE, curve, TENTACLE_MAX_RINGS, TENTACLE_POINTS_PER_RING, 0.8, rootColor, tipColor
+             THREE, curve, MAX_RINGS, POINTS_PER_RING, 0.8, rootColor, tipColor
         );
 
         const particles = new Float32Array(points);
@@ -1549,7 +1427,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
                   // 3. Re-generate Geometry
                   const { points } = generateRingedPoints(
-                      THREE, curve, TENTACLE_MAX_RINGS, TENTACLE_POINTS_PER_RING, 0.8, rootColor, tipColor
+                      THREE, curve, MAX_RINGS, POINTS_PER_RING, 0.8, rootColor, tipColor
                   );
                   
                   const attPos = mesh.geometry.attributes.position;
@@ -1677,7 +1555,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       horrorGrowthsRef.current = [];
       bloodParticlesRef.current = [];
     };
-  }, [pointData, isMobile]);
+  }, []);
 
   const createBullet = useCallback((scene) => {
       const THREE = window.THREE;
@@ -1694,9 +1572,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
       for (let i = 0; i < BULLET_POINT_COUNT; i++) {
           const angle = Math.random() * Math.PI * 2;
-          const radius = 0.55 * Math.random();
-          const zOffset = (Math.random() - 0.5) * 0.4;
-          positions[i * 3] = Math.cos(angle) * radius * 0.8;
+          const radius = 0.8 * Math.random();
+          const zOffset = (Math.random() - 0.5) * 0.6;
+          positions[i * 3] = Math.cos(angle) * radius;
           positions[i * 3 + 1] = Math.sin(angle) * radius;
           positions[i * 3 + 2] = zOffset;
 
@@ -1710,7 +1588,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
       const material = new THREE.PointsMaterial({
-          size: 0.9,
+          size: 1.2,
           sizeAttenuation: true,
           transparent: true,
           opacity: 0.85,
@@ -1720,7 +1598,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       });
 
       const cloud = new THREE.Points(geometry, material);
-      cloud.position.set(SHOOTER_WORLD_POS.x, bulletSpawnYRef.current, SHOOTER_WORLD_POS.z);
+      cloud.position.set(SHOOTER_WORLD_POS.x, SHOOTER_WORLD_POS.y, SHOOTER_WORLD_POS.z);
       cloud.userData = { 
         pulseOffset: Math.random() * Math.PI * 2,
         baseY: SHOOTER_WORLD_POS.y
@@ -1762,21 +1640,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
+    <>
       {/* 3D Container */}
-      <div
-        ref={mountRef}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          zIndex: 1,
-          backgroundColor: '#000',
-          overflow: 'visible'
-        }}
-      />
+      <div ref={mountRef} style={{ width: '100vw', height: '100vh', position: 'absolute', top: 0, left: 0, zIndex: 1, backgroundColor: '#000', overflow: 'hidden' }} />
       
       {/* HUD Layer - FUTURISTIC/NEURAL STYLE */}
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
@@ -1795,20 +1661,16 @@ const GamePhase = ({ pointData, onGameOver }) => {
         </div>
 
         {/* POINT CLOUD HEALTH BAR */}
-        <PointCloudHealthBar
-          health={health}
-          lastHit={lastHitTime}
-          isMobile={isMobile}
-          widthOverride={healthBarWidth}
-        />
+        <PointCloudHealthBar health={health} lastHit={lastHitTime} isMobile={isMobile} />
 
         {/* Health Text Label */}
-        <div className="neural-text" style={healthLabelStyle} ref={healthLabelRef}>
+        <div className="neural-text" style={healthLabelStyle}>
             <span style={{ fontSize: symbolFontSize }}>∿</span> 
-            <span ref={labelVRef}>V</span>ESSEL SYNAPSE<span ref={labelColonRef}>:</span> {health}% 
+            VESSEL SYNAPSE: {health}% 
+            {health > 100 && <span className="horror-text" style={{ marginLeft: isMobile ? '6px' : '10px', fontSize: overgrowthFontSize }}>(OVERGROWTH)</span>}
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
