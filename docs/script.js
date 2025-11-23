@@ -546,7 +546,7 @@ const generateRingedPoints = (
 // ==========================================
 
 // --- DYNAMIC PARTICLE HEALTH BAR ---
-const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
+const PointCloudHealthBar = ({ health, lastHit, isMobile = false, widthOverride }) => {
     const canvasRef = useRef(null);
     const healthRef = useRef(health); 
     const displayedHealthRef = useRef(health); // For fluid animation
@@ -713,7 +713,7 @@ const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
         return () => cancelAnimationFrame(reqRef.current);
     }, []);
 
-    const containerWidth = isMobile ? '25vw' : '600px';
+    const containerWidth = widthOverride ?? (isMobile ? '25vw' : '600px');
     const containerHeight = isMobile ? '18px' : '40px';
     const containerTop = isMobile ? '20px' : '30px';
     const containerLeft = isMobile ? '20px' : '30px';
@@ -725,7 +725,7 @@ const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
             position: 'absolute',
             top: containerTop,
             left: containerLeft,
-            width: containerWidth, 
+            width: typeof containerWidth === 'number' ? `${containerWidth}px` : containerWidth, 
             height: containerHeight,
             borderBottom: '1px solid rgba(0,255,0,0.2)',
             background: 'rgba(0, 20, 0, 0.1)', // Subtle backing
@@ -937,6 +937,19 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const labelVRef = useRef(null);
   const labelColonRef = useRef(null);
   const npcImageRef = useRef(null);
+  const healthLabelRef = useRef(null);
+  const [healthBarWidth, setHealthBarWidth] = useState(null);
+  useEffect(() => {
+    const updateBarWidth = () => {
+      if (healthLabelRef.current) {
+        const rect = healthLabelRef.current.getBoundingClientRect();
+        setHealthBarWidth(rect.width);
+      }
+    };
+    updateBarWidth();
+    window.addEventListener('resize', updateBarWidth);
+    return () => window.removeEventListener('resize', updateBarWidth);
+  }, [isMobile]);
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -1771,10 +1784,10 @@ const GamePhase = ({ pointData, onGameOver }) => {
         </div>
 
         {/* POINT CLOUD HEALTH BAR */}
-        <PointCloudHealthBar health={health} lastHit={lastHitTime} isMobile={isMobile} />
+        <PointCloudHealthBar health={health} lastHit={lastHitTime} isMobile={isMobile} widthOverride={healthBarWidth} />
 
         {/* Health Text Label */}
-        <div className="neural-text" style={healthLabelStyle}>
+        <div className="neural-text" style={healthLabelStyle} ref={healthLabelRef}>
             <span style={{ fontSize: symbolFontSize }}>∿</span> 
             <span ref={labelVRef}>V</span>ESSEL SYNAPSE<span ref={labelColonRef}>:</span> {health}% 
         </div>
