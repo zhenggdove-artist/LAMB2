@@ -22,7 +22,7 @@ const PLAYER_CONFIG = {
 const PLAYER_HIT_RADIUS = 1.2;
 // NPC 子彈生成點與大小：桌面與手機分開調
 const SHOOTER_BULLET_CONFIG = {
-  desktop: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
+  desktop: { origin: { x: 40, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
   mobile: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
 };
 const BULLET_SPEED = 0.6; // 子彈朝玩家移動的速度
@@ -1179,30 +1179,26 @@ const GamePhase = ({ pointData, onGameOver }) => {
         const batch = tentacleBatchRef.current;
         const totalPoints = pointData.length / 3;
 
-        // 1. Check if we need to start a completely new batch
-        // A batch is "complete" if it has 5 tentacles AND they are fully grown
-        if (batch.meshes.length >= TENTACLE_SETTINGS.perBatch && batch.targetScale >= 1.0) {
-             // Reset for next cluster
+        // 每次點擊保證至少生成一根：滿批次時重置後再生成
+        if (batch.meshes.length >= TENTACLE_SETTINGS.perBatch) {
              batch.meshes = [];
              batch.targetScale = 0.1;
              batch.active = false; 
         }
 
-        // 2. If no active batch, pick a new center seed
+        // 如果尚未設定中心，改用點擊位置最近的點雲；若沒有點擊紀錄則隨機
         if (!batch.active && batch.meshes.length === 0) {
-             batch.centerIndex = Math.floor(Math.random() * totalPoints);
+             batch.centerIndex = (clickCenterIndexRef.current ?? Math.floor(Math.random() * totalPoints));
              batch.active = true;
         }
 
-        // 3. Logic: If less than 5 roots, spawn a new one
-        if (batch.meshes.length < TENTACLE_SETTINGS.perBatch) {
-             const chosenIndex = clickCenterIndexRef.current ?? batch.centerIndex;
-             createSingleTentacle(chosenIndex, batch.targetScale);
-        } else {
-             // 4. If we have 5 roots, GROW them
-             batch.targetScale += TENTACLE_SETTINGS.growthPerClick; // Grow by config per click
-             if (batch.targetScale > 1.0) batch.targetScale = 1.0;
-        }
+        // 每次呼叫都新增一根觸手
+        const chosenIndex = clickCenterIndexRef.current ?? batch.centerIndex;
+        createSingleTentacle(chosenIndex, batch.targetScale);
+
+        // 同時推進成長倍率
+        batch.targetScale += TENTACLE_SETTINGS.growthPerClick; // Grow by config per click
+        if (batch.targetScale > 1.0) batch.targetScale = 1.0;
     };
 
     const createSingleTentacle = (seedIndex, initialScale) => {
