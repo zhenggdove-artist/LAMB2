@@ -965,23 +965,44 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     
-    const computeRendererViewport = () => ({
-      width: window.innerWidth,
-      height: window.innerHeight
-    });
+    const isMobileViewport = () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+    const computeRendererViewport = () => {
+      const isMobile = isMobileViewport();
+      if (!isMobile) {
+        return { width: window.innerWidth, height: window.innerHeight, isMobile };
+      }
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      let width = viewportWidth;
+      let height = width * (9 / 16);
+      if (height > viewportHeight) {
+        height = viewportHeight;
+        width = height * TARGET_ASPECT_RATIO;
+      }
+      return { width, height, isMobile };
+    };
     const applyRendererViewport = () => {
-      const { width, height } = computeRendererViewport();
+      const { width, height, isMobile } = computeRendererViewport();
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       const canvas = renderer.domElement;
-      canvas.style.width = '100vw';
-      canvas.style.height = '100vh';
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      canvas.style.maxWidth = '100%';
+      canvas.style.maxHeight = '100%';
       canvas.style.display = 'block';
-      canvas.style.position = 'absolute';
-      canvas.style.top = '0';
-      canvas.style.left = '0';
-      canvas.style.transform = 'none';
+      if (isMobile) {
+        canvas.style.position = 'absolute';
+        canvas.style.top = '50%';
+        canvas.style.left = '50%';
+        canvas.style.transform = 'translate(-50%, -50%)';
+      } else {
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.transform = 'none';
+      }
     };
     applyRendererViewport();
     mountRef.current?.appendChild(renderer.domElement);
