@@ -5,11 +5,61 @@ import { createRoot } from 'react-dom/client';
 // CONFIGURATION & ASSETS
 // ==========================================
 
-// [USER INSTRUCTION]: Replace these URLs with your local files for GitHub Pages
-// e.g. "assets/shooter_npc.gif"
+// Local sprite sequences used for the HUD NPC and its bullets
 const ASSETS = {
-  SHOOTER_NPC: "https://placehold.co/128x128/220022/00ff00?text=OPPRESSOR", 
-  BULLET: "https://placehold.co/16x16/ff0000/ff0000.png" 
+  SHOOTER_NPC_FRAMES: Array.from({ length: 19 }, (_, i) => `assets/player/player${i + 1}.PNG`),
+  BULLET_FRAMES: Array.from({ length: 4 }, (_, i) => `assets/bullet/BULLET${i + 1}.PNG`),
+};
+
+// Generic sprite sheet animator for <img> elements
+const SpriteAnimator = ({ frames, fps = 12, style, className = '', alt = '', ...imgProps }) => {
+  const [frameIndex, setFrameIndex] = useState(0);
+  const frameCount = frames?.length || 0;
+  const intervalMs = Math.max(16, 1000 / Math.max(1, fps));
+
+  useEffect(() => {
+    setFrameIndex(0);
+  }, [frameCount]);
+
+  useEffect(() => {
+    if (!frameCount) return undefined;
+
+    // Preload frames to avoid flicker on mobile browsers
+    const preloaded = frames.map((src) => {
+      const img = new Image();
+      img.src = src;
+      return img;
+    });
+
+    return () => {
+      preloaded.forEach((img) => {
+        img.src = '';
+      });
+    };
+  }, [frames, frameCount]);
+
+  useEffect(() => {
+    if (!frameCount) return undefined;
+
+    const handle = setInterval(() => {
+      setFrameIndex((prev) => (prev + 1) % frameCount);
+    }, intervalMs);
+
+    return () => clearInterval(handle);
+  }, [frameCount, intervalMs]);
+
+  if (!frameCount) return null;
+
+  return (
+    <img
+      src={frames[frameIndex]}
+      alt={alt}
+      className={className}
+      style={style}
+      draggable={false}
+      {...imgProps}
+    />
+  );
 };
 
 // ==========================================
@@ -583,7 +633,7 @@ const DrawingPhase = ({ onFinish }) => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     // High DPI Canvas
     canvas.width = 600;
     canvas.height = 600;
@@ -604,22 +654,58 @@ const DrawingPhase = ({ onFinish }) => {
     }
   }, []);
 
-  const startDrawing = ({ nativeEvent }) => {
-    const { offsetX, offsetY } = nativeEvent;
+  const getCanvasPoint = useCallback((nativeEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+
+    let clientX;
+    let clientY;
+
+    if (nativeEvent.touches && nativeEvent.touches.length > 0) {
+      clientX = nativeEvent.touches[0].clientX;
+      clientY = nativeEvent.touches[0].clientY;
+    } else if (nativeEvent.changedTouches && nativeEvent.changedTouches.length > 0) {
+      clientX = nativeEvent.changedTouches[0].clientX;
+      clientY = nativeEvent.changedTouches[0].clientY;
+    } else if (typeof nativeEvent.clientX === 'number' && typeof nativeEvent.clientY === 'number') {
+      clientX = nativeEvent.clientX;
+      clientY = nativeEvent.clientY;
+    } else if (typeof nativeEvent.offsetX === 'number' && typeof nativeEvent.offsetY === 'number') {
+      clientX = nativeEvent.offsetX + rect.left;
+      clientY = nativeEvent.offsetY + rect.top;
+    } else {
+      return null;
+    }
+
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+  }, []);
+
+  const startDrawing = (event) => {
+    if (event?.cancelable) event.preventDefault();
+    const point = getCanvasPoint(event.nativeEvent);
+    if (!point) return;
     contextRef.current?.beginPath();
-    contextRef.current?.moveTo(offsetX, offsetY);
+    contextRef.current?.moveTo(point.x, point.y);
     setIsDrawing(true);
   };
 
-  const finishDrawing = () => {
+  const finishDrawing = (event) => {
+    if (event?.cancelable) event.preventDefault();
+    if (!isDrawing) return;
     contextRef.current?.closePath();
     setIsDrawing(false);
   };
 
-  const draw = ({ nativeEvent }) => {
+  const draw = (event) => {
     if (!isDrawing) return;
-    const { offsetX, offsetY } = nativeEvent;
-    contextRef.current?.lineTo(offsetX, offsetY);
+    if (event?.cancelable) event.preventDefault();
+    const point = getCanvasPoint(event.nativeEvent);
+    if (!point) return;
+    contextRef.current?.lineTo(point.x, point.y);
     contextRef.current?.stroke();
   };
 
@@ -684,7 +770,11 @@ const DrawingPhase = ({ onFinish }) => {
         onMouseUp={finishDrawing}
         onMouseMove={draw}
         onMouseLeave={finishDrawing}
-        style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: 'white' }}
+        onTouchStart={startDrawing}
+        onTouchMove={draw}
+        onTouchEnd={finishDrawing}
+        onTouchCancel={finishDrawing}
+        style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: 'white', touchAction: 'none' }}
       />
       <button 
         onClick={handleFinish}
@@ -723,6 +813,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const bulletsRef = useRef([]);
   const bloodParticlesRef = useRef([]);
   const isDeadRef = useRef(false);
+  const bulletTexturesRef = useRef([]);
+  const BULLET_FRAME_DURATION = 80; // ms per bullet frame
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -752,6 +844,14 @@ const GamePhase = ({ pointData, onGameOver }) => {
   useEffect(() => {
     const THREE = window.THREE;
     if (!THREE) return;
+
+    const textureLoader = new THREE.TextureLoader();
+    bulletTexturesRef.current = ASSETS.BULLET_FRAMES.map((path) => {
+      const texture = textureLoader.load(path);
+      texture.encoding = THREE.sRGBEncoding || THREE.LinearEncoding;
+      texture.needsUpdate = true;
+      return texture;
+    });
 
     // SCENE
     const scene = new THREE.Scene();
@@ -1252,14 +1352,29 @@ const GamePhase = ({ pointData, onGameOver }) => {
           // BULLET LOGIC
           if (time - lastBulletTimeRef.current > 2000) {
               lastBulletTimeRef.current = time;
-              const bullet = createBullet(THREE);
-              scene.add(bullet);
-              bulletsRef.current.push(bullet);
+              const bullet = createBullet();
+              if (bullet) {
+                  scene.add(bullet);
+                  bulletsRef.current.push(bullet);
+              }
           }
 
           for (let i = bulletsRef.current.length - 1; i >= 0; i--) {
               const b = bulletsRef.current[i];
               b.position.x -= 0.5; // SWAPPED: Moves Right to Left
+              const textures = bulletTexturesRef.current;
+              if (textures.length > 1) {
+                  const data = b.userData || (b.userData = {});
+                  if (data.lastFrameTime === undefined) {
+                      data.lastFrameTime = time;
+                  }
+                  if (time - data.lastFrameTime >= BULLET_FRAME_DURATION) {
+                      data.frameIndex = ((data.frameIndex || 0) + 1) % textures.length;
+                      b.material.map = textures[data.frameIndex];
+                      b.material.needsUpdate = true;
+                      data.lastFrameTime = time;
+                  }
+              }
 
               // Hit Detection (Player is at x = -35)
               if (b.position.x < -25 && b.position.x > -45 && Math.abs(b.position.y) < 10) {
@@ -1295,22 +1410,30 @@ const GamePhase = ({ pointData, onGameOver }) => {
       bulletsRef.current = [];
       horrorGrowthsRef.current = [];
       bloodParticlesRef.current = [];
+      bulletTexturesRef.current.forEach((tex) => tex.dispose && tex.dispose());
+      bulletTexturesRef.current = [];
     };
   }, []);
 
-  const createBullet = (THREE) => {
+  const createBullet = useCallback(() => {
+      const THREE = window.THREE;
+      if (!THREE || bulletTexturesRef.current.length === 0) return null;
+
       const geometry = new THREE.PlaneGeometry(2, 1);
-      const texture = new THREE.TextureLoader().load(ASSETS.BULLET);
       const material = new THREE.MeshBasicMaterial({ 
-          map: texture, 
           transparent: true,
-          color: 0xff0000 
+          depthWrite: false,
+          side: THREE.DoubleSide
       });
+      material.map = bulletTexturesRef.current[0];
+      material.needsUpdate = true;
+
       const mesh = new THREE.Mesh(geometry, material);
       // Spawn at Right Side (x = 25)
       mesh.position.set(25, (Math.random() * 10) - 5, 0); 
+      mesh.userData = { frameIndex: 0, lastFrameTime: performance.now() };
       return mesh;
-  };
+  }, []);
 
   return (
     <>
@@ -1329,7 +1452,13 @@ const GamePhase = ({ pointData, onGameOver }) => {
             width: '150px',
             height: '150px'
         }}>
-            <img src={ASSETS.SHOOTER_NPC} id="npc_shooter" alt="Shooter" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            <SpriteAnimator
+              id="npc_shooter"
+              frames={ASSETS.SHOOTER_NPC_FRAMES}
+              fps={14}
+              alt="Shooter"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
         </div>
 
         {/* POINT CLOUD HEALTH BAR */}
