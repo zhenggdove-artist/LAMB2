@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -721,15 +722,7 @@ const GamePhase = ({ pointData, onGameOver }: { pointData: number[], onGameOver:
   const sceneRef = useRef<any>(null);
   const entityRef = useRef<any>(null); 
   const horrorGrowthsRef = useRef<any[]>([]); 
-  
-  // ASSET REFS (Sprite Sheets)
-  const playerTexturesRef = useRef<any[]>([]); // Shooter NPC
-  const bulletTexturesRef = useRef<any[]>([]);
-  const [assetsLoaded, setAssetsLoaded] = useState(false);
-  
   const bulletsRef = useRef<any[]>([]);
-  const shooterRef = useRef<any>(null); // Animated Shooter Object
-
   const bloodParticlesRef = useRef<any[]>([]);
   const isDeadRef = useRef(false);
 
@@ -765,47 +758,7 @@ const GamePhase = ({ pointData, onGameOver }: { pointData: number[], onGameOver:
   const MAX_RINGS = 60; // How many transverse rings
   const POINTS_PER_RING = 30; // Points in one circle
 
-  // ----------------------------
-  // 1. ASSET PRELOADING
-  // ----------------------------
   useEffect(() => {
-      const THREE = window.THREE;
-      if (!THREE) return;
-
-      const loadAssets = async () => {
-          const loader = new THREE.TextureLoader();
-          const pPromises = [];
-          const bPromises = [];
-
-          // Load Player Sprites (1 to 19)
-          for (let i = 1; i <= 19; i++) {
-              pPromises.push(loader.loadAsync(`assets/player/player${i}.png`));
-          }
-
-          // Load Bullet Sprites (1 to 4)
-          for (let i = 1; i <= 4; i++) {
-              bPromises.push(loader.loadAsync(`assets/bullet/BULLET${i}.png`));
-          }
-
-          try {
-              const playerTex = await Promise.all(pPromises);
-              const bulletTex = await Promise.all(bPromises);
-              
-              playerTexturesRef.current = playerTex;
-              bulletTexturesRef.current = bulletTex;
-              setAssetsLoaded(true);
-          } catch (err) {
-              console.error("Error loading assets. Make sure folders exist!", err);
-              alert("Failed to load images. Check console and ensure assets folder exists.");
-          }
-      };
-
-      loadAssets();
-  }, []);
-
-  useEffect(() => {
-    if (!assetsLoaded) return; // Wait for assets
-    
     const THREE = window.THREE;
     if (!THREE) return;
 
@@ -827,31 +780,6 @@ const GamePhase = ({ pointData, onGameOver }: { pointData: number[], onGameOver:
     const ambientLight = new THREE.AmbientLight(0x222222);
     scene.add(ambientLight);
 
-    // ----------------------------
-    // SHOOTER NPC (ANIMATED SPRITE)
-    // ----------------------------
-    const shooterGeo = new THREE.PlaneGeometry(12, 12); // Size of NPC
-    // Start with frame 0
-    const shooterMat = new THREE.MeshBasicMaterial({ 
-        map: playerTexturesRef.current[0], 
-        transparent: true,
-        side: THREE.DoubleSide 
-    });
-    const shooterMesh = new THREE.Mesh(shooterGeo, shooterMat);
-    shooterMesh.position.set(25, 0, 0); // Right Side
-    // Slightly tilt to look 3D
-    shooterMesh.rotation.y = -0.2; 
-    scene.add(shooterMesh);
-
-    // Store shooter with animation state
-    shooterRef.current = {
-        mesh: shooterMesh,
-        frameIndex: 0,
-        tickCount: 0,
-        frameDuration: 0.1, // Update every 0.1s
-        totalFrames: 19
-    };
-    
     // ----------------------------
     // ENTITY GENERATION (Volumetric Point Cloud)
     // ----------------------------
@@ -983,6 +911,17 @@ const GamePhase = ({ pointData, onGameOver }: { pointData: number[], onGameOver:
     createEye('front');
     createEye('side');
     createEye('side');
+
+    // ----------------------------
+    // NPC (SHOOTER) PLACEHOLDER
+    // ----------------------------
+    const shooterGeo = new THREE.PlaneGeometry(8, 8);
+    const shooterMat = new THREE.MeshBasicMaterial({ color: 0xff0044, side: THREE.DoubleSide });
+    const shooterMesh = new THREE.Mesh(shooterGeo, shooterMat);
+    shooterMesh.position.set(25, 0, 0); // Right side
+    shooterMesh.rotation.y = -0.5;
+    scene.add(shooterMesh);
+
 
     // ----------------------------
     // HORROR FACTORIES
@@ -1190,7 +1129,7 @@ const GamePhase = ({ pointData, onGameOver }: { pointData: number[], onGameOver:
 
     const animate = (time: number) => {
       const seconds = time * 0.001;
-      const deltaTime = (time - lastTime) * 0.001;
+      // const deltaTime = (time - lastTime) * 0.001;
       lastTime = time;
 
       uniformsRef.current.uTime.value = seconds;
@@ -1198,28 +1137,6 @@ const GamePhase = ({ pointData, onGameOver }: { pointData: number[], onGameOver:
       uniformsRef.current.uHeal.value = healIntensityRef.current;
       hitIntensityRef.current *= 0.9;
       uniformsRef.current.uHit.value = hitIntensityRef.current;
-
-      // --- UPDATE SHOOTER SPRITE ANIMATION ---
-      if (shooterRef.current) {
-          const s = shooterRef.current;
-          s.tickCount += deltaTime;
-          if (s.tickCount > s.frameDuration) {
-              s.tickCount = 0;
-              s.frameIndex = (s.frameIndex + 1) % s.totalFrames;
-              // Texture Swap
-              s.mesh.material.map = playerTexturesRef.current[s.frameIndex];
-          }
-      }
-
-      // --- UPDATE BULLET SPRITE ANIMATION ---
-      bulletsRef.current.forEach(b => {
-          b.userData.tickCount += deltaTime;
-          if (b.userData.tickCount > 0.1) { // Bullet frame speed
-              b.userData.tickCount = 0;
-              b.userData.frameIndex = (b.userData.frameIndex + 1) % 4;
-              b.material.map = bulletTexturesRef.current[b.userData.frameIndex];
-          }
-      });
 
       // INDEPENDENT BLINK LOGIC
       eyesRef.current.forEach(eye => {
@@ -1401,48 +1318,16 @@ const GamePhase = ({ pointData, onGameOver }: { pointData: number[], onGameOver:
       bulletsRef.current = [];
       horrorGrowthsRef.current = [];
       bloodParticlesRef.current = [];
-      // Cleanup Textures
-      playerTexturesRef.current.forEach(t => t.dispose());
-      bulletTexturesRef.current.forEach(t => t.dispose());
     };
-  }, [assetsLoaded]); // Wait for assets to load
+  }, []);
 
   const createBullet = (THREE: any) => {
-      const geometry = new THREE.PlaneGeometry(4, 2); // Adjusted bullet size
-      // Start with first frame
-      const material = new THREE.MeshBasicMaterial({ 
-          map: bulletTexturesRef.current[0], 
-          transparent: true,
-          color: 0xffffff // White to show texture colors
-      });
+      const geometry = new THREE.PlaneGeometry(3, 0.5);
+      const material = new THREE.MeshBasicMaterial({ color: 0xffffff }); // White laser
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(25, (Math.random() * 10) - 5, 0);
-      
-      // Initial Animation State
-      mesh.userData = {
-          frameIndex: 0,
-          tickCount: 0
-      };
       return mesh;
   };
-
-  if (!assetsLoaded) {
-      return (
-          <div style={{
-              width: '100vw',
-              height: '100vh',
-              background: '#050505',
-              color: '#00ff00',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: 'Megrim',
-              fontSize: '24px'
-          }}>
-              LOADING SPIRITS...
-          </div>
-      );
-  }
 
   return (
     <>
@@ -1452,8 +1337,6 @@ const GamePhase = ({ pointData, onGameOver }: { pointData: number[], onGameOver:
       {/* HUD Layer - FUTURISTIC/NEURAL STYLE */}
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
         
-        {/* REMOVED OLD HTML SHOOTER IMG - NOW RENDERED IN 3D */}
-
         {/* POINT CLOUD HEALTH BAR */}
         <PointCloudHealthBar health={health} lastHit={lastHitTime} />
 
