@@ -13,6 +13,38 @@ const ASSETS = {
 const MOBILE_BREAKPOINT = 768;
 const TARGET_ASPECT_RATIO = 16 / 9;
 const BULLET_POINT_COUNT = 80;
+const SHOOTER_WORLD_POS = { x: 25, y: 0, z: 0 };
+const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
+
+const useIsMobileViewport = () => {
+  const getMatches = () => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+  };
+
+  const [isMobile, setIsMobile] = useState(getMatches);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+    const handler = (event) => setIsMobile(event.matches);
+    if (mq.addEventListener) {
+      mq.addEventListener('change', handler);
+    } else if (mq.addListener) {
+      mq.addListener(handler);
+    }
+    handler(mq);
+    return () => {
+      if (mq.removeEventListener) {
+        mq.removeEventListener('change', handler);
+      } else if (mq.removeListener) {
+        mq.removeListener(handler);
+      }
+    };
+  }, []);
+
+  return isMobile;
+};
 
 // Generic sprite sheet animator for <img> elements
 const SpriteAnimator = ({ frames, fps = 12, style, className = '', alt = '', ...imgProps }) => {
@@ -440,7 +472,7 @@ const generateRingedPoints = (
 // ==========================================
 
 // --- DYNAMIC PARTICLE HEALTH BAR ---
-const PointCloudHealthBar = ({ health, lastHit }) => {
+const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
     const canvasRef = useRef(null);
     const healthRef = useRef(health); 
     const displayedHealthRef = useRef(health); // For fluid animation
@@ -607,19 +639,26 @@ const PointCloudHealthBar = ({ health, lastHit }) => {
         return () => cancelAnimationFrame(reqRef.current);
     }, []);
 
+    const containerWidth = isMobile ? '50vw' : '600px';
+    const containerHeight = isMobile ? '28px' : '40px';
+    const containerTop = isMobile ? '20px' : '30px';
+    const containerLeft = isMobile ? '20px' : '30px';
+    const canvasWidth = isMobile ? 800 : 1200;
+    const canvasHeight = isMobile ? 60 : 80;
+
     return (
         <div style={{
             position: 'absolute',
-            top: '30px',
-            left: '30px',
-            width: '600px', 
-            height: '40px',
+            top: containerTop,
+            left: containerLeft,
+            width: containerWidth, 
+            height: containerHeight,
             borderBottom: '1px solid rgba(0,255,0,0.2)',
             background: 'rgba(0, 20, 0, 0.1)', // Subtle backing
             boxShadow: '0 0 20px rgba(0,255,0,0.05)'
         }}>
             {/* High DPI Canvas */}
-            <canvas ref={canvasRef} width={1200} height={80} style={{ width: '100%', height: '100%' }} />
+            <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} style={{ width: '100%', height: '100%' }} />
         </div>
     );
 };
@@ -811,6 +850,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const [health, setHealth] = useState(100);
   const [lastHitTime, setLastHitTime] = useState(0); // For UI Disturbance
   const healthRef = useRef(100); 
+  const isMobile = useIsMobileViewport();
   
   // Refs
   const sceneRef = useRef(null);
@@ -1520,14 +1560,41 @@ const GamePhase = ({ pointData, onGameOver }) => {
       });
 
       const cloud = new THREE.Points(geometry, material);
-      cloud.position.set(25, (Math.random() * 10) - 5, 0);
+      cloud.position.set(SHOOTER_WORLD_POS.x, SHOOTER_WORLD_POS.y, SHOOTER_WORLD_POS.z);
       cloud.userData = { 
         pulseOffset: Math.random() * Math.PI * 2,
-        baseY: cloud.position.y
+        baseY: SHOOTER_WORLD_POS.y
       };
       scene.add(cloud);
       return cloud;
   }, []);
+
+  const healthColor = health > 100 ? '#ff00ff' : '#00ff00';
+  const healthLabelStyle = {
+    position: 'absolute',
+    top: isMobile ? '60px' : '75px',
+    left: isMobile ? '20px' : '30px',
+    color: healthColor,
+    fontSize: isMobile ? '13px' : '18px',
+    fontWeight: 'bold',
+    fontFamily: 'Megrim',
+    textTransform: 'uppercase',
+    display: 'flex',
+    alignItems: 'center',
+    gap: isMobile ? '6px' : '10px'
+  };
+  const symbolFontSize = isMobile ? '18px' : '24px';
+  const overgrowthFontSize = isMobile ? '10px' : '14px';
+
+  const npcSize = isMobile ? 120 : 150;
+  const npcStyle = {
+    position: 'absolute',
+    right: isMobile ? '2%' : '5%',
+    top: '50%',
+    transform: `translateY(-${NPC_HEAD_ANCHOR_RATIO * 100}%)`,
+    width: `${npcSize}px`,
+    height: `${npcSize}px`
+  };
 
   return (
     <>
@@ -1538,14 +1605,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
         
         {/* Shooter NPC - SWAPPED TO RIGHT */}
-        <div style={{
-            position: 'absolute',
-            right: '5%', // SWAPPED
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: '150px',
-            height: '150px'
-        }}>
+        <div style={npcStyle}>
             <SpriteAnimator
               id="npc_shooter"
               frames={ASSETS.SHOOTER_NPC_FRAMES}
@@ -1556,25 +1616,13 @@ const GamePhase = ({ pointData, onGameOver }) => {
         </div>
 
         {/* POINT CLOUD HEALTH BAR */}
-        <PointCloudHealthBar health={health} lastHit={lastHitTime} />
+        <PointCloudHealthBar health={health} lastHit={lastHitTime} isMobile={isMobile} />
 
         {/* Health Text Label */}
-        <div className="neural-text" style={{ 
-            position: 'absolute', 
-            top: '75px', 
-            left: '30px', 
-            color: health > 100 ? '#ff00ff' : '#00ff00', 
-            fontSize: '18px',
-            fontWeight: 'bold',
-            fontFamily: 'Megrim',
-            textTransform: 'uppercase',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px'
-        }}>
-            <span style={{ fontSize: '24px' }}>∿</span> 
+        <div className="neural-text" style={healthLabelStyle}>
+            <span style={{ fontSize: symbolFontSize }}>∿</span> 
             VESSEL SYNAPSE: {health}% 
-            {health > 100 && <span className="horror-text" style={{ marginLeft: '10px', fontSize: '14px' }}>(OVERGROWTH)</span>}
+            {health > 100 && <span className="horror-text" style={{ marginLeft: isMobile ? '6px' : '10px', fontSize: overgrowthFontSize }}>(OVERGROWTH)</span>}
         </div>
       </div>
     </>
