@@ -22,7 +22,7 @@ const PLAYER_CONFIG = {
 const PLAYER_HIT_RADIUS = 1.2;
 // NPC 子彈生成點與大小：桌面與手機分開調
 const SHOOTER_BULLET_CONFIG = {
-  desktop: { origin: { x: 40, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
+  desktop: { origin: { x: 50, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
   mobile: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
 };
 const BULLET_SPEED = 0.6; // 子彈朝玩家移動的速度
