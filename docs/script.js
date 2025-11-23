@@ -1572,13 +1572,13 @@ const GamePhase = ({ pointData, onGameOver }) => {
               }
               b.rotation.z += 0.08;
 
-              // 依玩家點雲最近點方向移動（每幀重算，不再水平）
+              // 依玩家點雲最近點方向移動（每幀重算），並記錄最近距離供判定
               let moved = false;
+              let nearestD2 = Infinity;
               if (entityRef.current && collisionPointsRef.current.length) {
                   localTmp.copy(b.position);
                   entityRef.current.worldToLocal(localTmp);
                   let nearest = null;
-                  let nearestD2 = Infinity;
                   for (let k = 0; k < collisionPointsRef.current.length; k++) {
                       const p = collisionPointsRef.current[k];
                       const d2 = localTmp.distanceToSquared(p);
@@ -1618,10 +1618,14 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   if (entityRef.current && collisionPointsRef.current.length) {
                       const localPos = entityRef.current.worldToLocal(tmpHitVec.copy(b.position));
                       const r2 = PLAYER_HIT_RADIUS * PLAYER_HIT_RADIUS;
-                      for (let k = 0; k < collisionPointsRef.current.length; k++) {
-                          if (localPos.distanceToSquared(collisionPointsRef.current[k]) <= r2) {
-                              hit = true;
-                              break;
+                      if (nearestD2 <= r2) {
+                          hit = true;
+                      } else {
+                          for (let k = 0; k < collisionPointsRef.current.length; k++) {
+                              if (localPos.distanceToSquared(collisionPointsRef.current[k]) <= r2) {
+                                  hit = true;
+                                  break;
+                              }
                           }
                       }
                   } else {
