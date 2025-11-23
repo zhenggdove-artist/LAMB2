@@ -18,11 +18,8 @@ const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
 const TENTACLE_MAX_RINGS = 60;
 const TENTACLE_POINTS_PER_RING = 30;
-const PX_TO_WORLD = 0.1; // convert drawing pixels to world units
-const MOBILE_PLAYER_SHIFT_X = 1000 * PX_TO_WORLD;
-const MOBILE_PLAYER_SCALE = 0.5;
-const MOBILE_BULLET_SHIFT_X = -1000 * PX_TO_WORLD;
-const MOBILE_BULLET_SHIFT_Y = 360 * PX_TO_WORLD;
+const MOBILE_PLAYER_SHIFT_X = 0;
+const MOBILE_PLAYER_SCALE = 1;
 const MOBILE_BULLET_SIZE = 0.6;
 
 const useIsMobileViewport = () => {
@@ -937,6 +934,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const bulletSpawnYRef = useRef(SHOOTER_WORLD_POS.y);
   const bulletSpawnXRef = useRef(SHOOTER_WORLD_POS.x);
   const playerScaleRef = useRef(1);
+  const labelVRef = useRef(null);
+  const labelColonRef = useRef(null);
+  const npcImageRef = useRef(null);
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -966,8 +966,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const bulletHeightRatio = 0.5;
     const playerShiftX = isMobile ? MOBILE_PLAYER_SHIFT_X : 0;
     const playerScale = isMobile ? MOBILE_PLAYER_SCALE : 1;
-    const bulletShiftX = isMobile ? MOBILE_BULLET_SHIFT_X : 0;
-    const bulletShiftY = isMobile ? MOBILE_BULLET_SHIFT_Y : 0;
 
     // SCENE
     const scene = new THREE.Scene();
@@ -1003,13 +1001,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
     applyRendererViewport();
     mountRef.current?.appendChild(renderer.domElement);
     
-    const handleResize = () => {
-      renderer.setPixelRatio(window.devicePixelRatio);
-      applyRendererViewport();
-    };
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleResize);
-
     const disposeBullet = (sceneObj, bullet) => {
       if (!bullet) return;
       sceneObj.remove(bullet);
@@ -1066,10 +1057,65 @@ const GamePhase = ({ pointData, onGameOver }) => {
     scene.add(cloud);
     entityRef.current = cloud;
 
-    const playerHeight = (box.max.y - box.min.y) * playerScale;
-    const minY = box.min.y * playerScale;
-    bulletSpawnYRef.current = cloud.position.y + minY + playerHeight * bulletHeightRatio + bulletShiftY;
-    bulletSpawnXRef.current = SHOOTER_WORLD_POS.x + bulletShiftX;
+    const scaledHeight = (box.max.y - box.min.y) * playerScale;
+    const scaledMinY = box.min.y * playerScale;
+    const setDefaultBulletSpawn = () => {
+      bulletSpawnXRef.current = SHOOTER_WORLD_POS.x;
+      bulletSpawnYRef.current = cloud.position.y + scaledMinY + scaledHeight * bulletHeightRatio;
+    };
+
+    const screenToWorld = (pixelX, pixelY, targetZ = 0) => {
+      const ndcX = (pixelX / window.innerWidth) * 2 - 1;
+      const ndcY = -(pixelY / window.innerHeight) * 2 + 1;
+      const vector = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera);
+      const dir = vector.sub(camera.position).normalize();
+      const distance = (targetZ - camera.position.z) / dir.z;
+      return camera.position.clone().add(dir.multiplyScalar(distance));
+    };
+
+    const alignToUI = () => {
+      if (!isMobile) return;
+      const vRect = labelVRef.current?.getBoundingClientRect();
+      const colonRect = labelColonRef.current?.getBoundingClientRect();
+      if (vRect && colonRect) {
+        const leftWorld = screenToWorld(vRect.left, vRect.top + vRect.height / 2).x;
+        const rightWorld = screenToWorld(colonRect.right, colonRect.top + colonRect.height / 2).x;
+        const currentLeft = box.min.x * playerScale + cloud.position.x;
+        const currentRight = box.max.x * playerScale + cloud.position.x;
+        let offset = leftWorld - currentLeft;
+        cloud.position.x += offset;
+        const overshoot = (box.max.x * playerScale + cloud.position.x) - rightWorld;
+        if (overshoot > 0) {
+          cloud.position.x -= overshoot;
+        }
+      }
+
+      const npcRect = npcImageRef.current?.getBoundingClientRect();
+      if (npcRect) {
+        const bulletWorld = screenToWorld(npcRect.left, npcRect.top + npcRect.height / 2);
+        bulletSpawnXRef.current = bulletWorld.x;
+        bulletSpawnYRef.current = bulletWorld.y;
+      } else {
+        setDefaultBulletSpawn();
+      }
+    };
+
+    setDefaultBulletSpawn();
+    if (isMobile) {
+      requestAnimationFrame(alignToUI);
+    }
+
+    const handleResize = () => {
+      renderer.setPixelRatio(window.devicePixelRatio);
+      applyRendererViewport();
+      if (isMobile) {
+        requestAnimationFrame(alignToUI);
+      } else {
+        setDefaultBulletSpawn();
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
 
     // ----------------------------
     // EYE ATTACHMENT LOGIC (EDGE DETECTION)
@@ -1712,7 +1758,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
         
         {/* Shooter NPC - SWAPPED TO RIGHT */}
-        <div style={npcStyle}>
+        <div style={npcStyle} ref={npcImageRef}>
             <SpriteAnimator
               id="npc_shooter"
               frames={ASSETS.SHOOTER_NPC_FRAMES}
@@ -1730,7 +1776,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
         {/* Health Text Label */}
         <div className="neural-text" style={healthLabelStyle}>
             <span style={{ fontSize: symbolFontSize }}>∿</span> 
-            VESSEL SYNAPSE: {health}% 
+            <span ref={labelVRef}>V</span>ESSEL SYNAPSE<span ref={labelColonRef}>:</span> {health}% 
         </div>
       </div>
     </div>
