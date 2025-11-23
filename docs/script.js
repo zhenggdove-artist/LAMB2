@@ -28,28 +28,36 @@ const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
 
 const useIsMobileViewport = () => {
   const getMatches = () => {
-    if (typeof window === 'undefined' || !window.matchMedia) return false;
-    return window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+    if (typeof window === 'undefined') return false;
+    const widthGuess = Math.min(
+      window.visualViewport?.width || Infinity,
+      window.innerWidth || Infinity,
+      document.documentElement?.clientWidth || Infinity
+    );
+    const mqMatches = window.matchMedia?.(`(max-width: ${MOBILE_BREAKPOINT}px)`)?.matches ?? false;
+    const uaMatches = typeof navigator !== 'undefined'
+      ? /Mobile|Android|iP(hone|od|ad)/i.test(navigator.userAgent || '')
+      : false;
+    const widthMatches = widthGuess !== Infinity ? widthGuess <= MOBILE_BREAKPOINT : false;
+    return mqMatches || widthMatches || uaMatches;
   };
 
   const [isMobile, setIsMobile] = useState(getMatches);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
-    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
-    const handler = (event) => setIsMobile(event.matches);
-    if (mq.addEventListener) {
-      mq.addEventListener('change', handler);
-    } else if (mq.addListener) {
-      mq.addListener(handler);
-    }
-    handler(mq);
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia?.(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+    const handler = () => setIsMobile(getMatches());
+    mq?.addEventListener?.('change', handler);
+    mq?.addListener?.(handler);
+    window.addEventListener('resize', handler);
+    window.visualViewport?.addEventListener?.('resize', handler);
+    handler();
     return () => {
-      if (mq.removeEventListener) {
-        mq.removeEventListener('change', handler);
-      } else if (mq.removeListener) {
-        mq.removeListener(handler);
-      }
+      mq?.removeEventListener?.('change', handler);
+      mq?.removeListener?.(handler);
+      window.removeEventListener('resize', handler);
+      window.visualViewport?.removeEventListener?.('resize', handler);
     };
   }, []);
 
