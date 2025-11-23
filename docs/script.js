@@ -16,7 +16,7 @@ const BULLET_POINT_COUNT = 80;
 // 玩家在三維世界中的生成點/縮放：桌面與手機分開調
 const PLAYER_CONFIG = {
   desktop: { position: { x: -35, y: 0, z: 0 }, baseScale: 1.0 },
-  mobile: { position: { x: -30, y: 0, z: 0 }, baseScale: 0.9 },
+  mobile: { position: { x: 0, y: 0, z: 0 }, baseScale: 0.9 },
 };
 // NPC 子彈生成點與大小：桌面與手機分開調
 const SHOOTER_BULLET_CONFIG = {
