@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // ==========================================
@@ -16,6 +16,8 @@ const BULLET_POINT_COUNT = 80;
 const SHOOTER_WORLD_POS = { x: 25, y: 0, z: 0 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
+const TENTACLE_MAX_RINGS = 60;
+const TENTACLE_POINTS_PER_RING = 30;
 
 const useIsMobileViewport = () => {
   const getMatches = () => {
@@ -709,6 +711,7 @@ const DrawingPhase = ({ onFinish }) => {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const contextRef = useRef(null);
+  const tentacleBackgroundRef = useRef(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -732,6 +735,256 @@ const DrawingPhase = ({ onFinish }) => {
       ctx.fillStyle = '#E1C4C4';
       ctx.fillRect(0, 0, 300, 300);
     }
+  }, []);
+
+  useEffect(() => {
+    const container = tentacleBackgroundRef.current;
+    if (!container) return;
+
+    let renderer = null;
+    let camera = null;
+    let scene = null;
+    let uniforms = null;
+    let animationFrame = 0;
+    let spawnInterval = 0;
+    let waitForThreeRAF = 0;
+    const spawnTimeouts = [];
+    const activeTentacles = [];
+    let resizeHandler = null;
+    let disposed = false;
+    let THREEInstance = null;
+
+    const getDimensions = () => {
+      const { clientWidth, clientHeight } = container;
+      return {
+        width: clientWidth || window.innerWidth,
+        height: clientHeight || window.innerHeight
+      };
+    };
+
+    const disposeTentacle = (tentacle) => {
+      if (!tentacle || !scene) return;
+      scene.remove(tentacle.mesh);
+      tentacle.mesh.geometry.dispose();
+      if (tentacle.mesh.material?.dispose) tentacle.mesh.material.dispose();
+    };
+
+    const initRenderer = () => {
+      const { width, height } = getDimensions();
+      camera = new THREEInstance.PerspectiveCamera(55, width / height, 0.1, 400);
+      camera.position.set(0, 0, 110);
+
+      renderer = new THREEInstance.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(width, height);
+      renderer.domElement.style.position = 'absolute';
+      renderer.domElement.style.inset = '0';
+      renderer.domElement.style.pointerEvents = 'none';
+      container.appendChild(renderer.domElement);
+    };
+
+    const createBackgroundTentacle = () => {
+      if (!THREEInstance || !scene) return null;
+      const rootPos = new THREEInstance.Vector3(
+        (Math.random() - 0.5) * 70,
+        -35 + Math.random() * 10,
+        -10 + Math.random() * 20
+      );
+      const pathPoints = [];
+      const numSegments = 25;
+      const length = 30 + Math.random() * 18;
+      const phase = Math.random() * Math.PI * 2;
+      const sway = (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 4);
+
+      for (let i = 0; i < numSegments; i++) {
+        const t = i / (numSegments - 1);
+        const base = new THREEInstance.Vector3(0, t * length, 0);
+        base.x += Math.sin(t * Math.PI * 4 + phase) * (4 + t * 9) + sway * t;
+        base.y += Math.cos(t * Math.PI * 2 + phase * 0.5) * 1.5;
+        base.z += Math.sin(t * Math.PI * 3 + phase) * (2 + t * 4);
+        pathPoints.push(base);
+      }
+
+      const curve = new THREEInstance.CatmullRomCurve3(pathPoints);
+      const rootColor = new THREEInstance.Color().setHSL(0.93 + Math.random() * 0.04, 0.7, 0.75);
+      const tipColor = new THREEInstance.Color().setHSL(0.98 + Math.random() * 0.02, 0.85, 0.6);
+      const { points, sizes, colors } = generateRingedPoints(
+        THREEInstance,
+        curve,
+        TENTACLE_MAX_RINGS,
+        TENTACLE_POINTS_PER_RING,
+        0.75,
+        rootColor,
+        tipColor
+      );
+
+      const geometry = new THREEInstance.BufferGeometry();
+      const positionAttr = new THREEInstance.BufferAttribute(new Float32Array(points), 3);
+      const colorAttr = new THREEInstance.BufferAttribute(new Float32Array(colors), 3);
+      positionAttr.setUsage(THREEInstance.DynamicDrawUsage);
+      colorAttr.setUsage(THREEInstance.DynamicDrawUsage);
+      geometry.setAttribute('position', positionAttr);
+      geometry.setAttribute('size', new THREEInstance.BufferAttribute(new Float32Array(sizes), 1));
+      geometry.setAttribute('customColor', colorAttr);
+
+      const material = new THREEInstance.ShaderMaterial({
+        uniforms,
+        vertexShader,
+        fragmentShader,
+        blending: THREEInstance.AdditiveBlending,
+        depthTest: false,
+        transparent: true
+      });
+
+      const mesh = new THREEInstance.Points(geometry, material);
+      mesh.position.copy(rootPos);
+      mesh.scale.set(0.01, 0.01, 0.01);
+      scene.add(mesh);
+
+      return {
+        mesh,
+        curve,
+        restPoints: pathPoints.map((p) => p.clone()),
+        rootColor,
+        tipColor,
+        originalColors: new Float32Array(colors),
+        seed: Math.random() * 1000,
+        speed: 0.6 + Math.random() * 0.6,
+        spiralFactor: (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2.5),
+        targetScale: 0.5 + Math.random() * 0.6,
+        createdAt: performance.now(),
+        decay: false
+      };
+    };
+
+    const spawnTentacle = () => {
+      if (!scene || !THREEInstance) return;
+      const tentacle = createBackgroundTentacle();
+      if (!tentacle) return;
+      activeTentacles.push(tentacle);
+      if (activeTentacles.length > 12) {
+        const old = activeTentacles.shift();
+        disposeTentacle(old);
+      }
+    };
+
+    const updateTentacles = (seconds) => {
+      if (!THREEInstance) return;
+      const now = performance.now();
+      for (let i = activeTentacles.length - 1; i >= 0; i--) {
+        const t = activeTentacles[i];
+        const curvePoints = t.curve.points;
+        for (let j = 1; j < curvePoints.length; j++) {
+          const rest = t.restPoints[j];
+          const amp = (j / curvePoints.length) * 3.0;
+          const tt = seconds * t.speed + j * 0.25;
+          const spiralX = Math.sin(tt) * Math.cos(tt * 0.6) * t.spiralFactor;
+          const spiralY = Math.cos(tt) * Math.sin(tt * 0.5) * t.spiralFactor * 0.4;
+          curvePoints[j].x = rest.x + Math.sin(tt + t.seed) * amp + spiralX;
+          curvePoints[j].y = rest.y + Math.cos(tt * 0.8 + t.seed) * amp * 0.3 + spiralY;
+          curvePoints[j].z = rest.z + Math.sin(tt * 0.6 + t.seed) * amp * 0.6;
+        }
+
+        const { points } = generateRingedPoints(
+          THREEInstance,
+          t.curve,
+          TENTACLE_MAX_RINGS,
+          TENTACLE_POINTS_PER_RING,
+          0.75,
+          t.rootColor,
+          t.tipColor
+        );
+        const posAttr = t.mesh.geometry.attributes.position;
+        const colAttr = t.mesh.geometry.attributes.customColor;
+        for (let k = 0; k < points.length; k++) {
+          posAttr.array[k] = points[k];
+        }
+        posAttr.needsUpdate = true;
+
+        const brightness = Math.max(0.25, Math.min(1.2, t.mesh.scale.x * 1.8));
+        const baseColors = t.originalColors;
+        for (let c = 0; c < baseColors.length; c++) {
+          colAttr.array[c] = baseColors[c] * brightness;
+        }
+        colAttr.needsUpdate = true;
+
+        const age = (now - t.createdAt) / 1000;
+        if (!t.decay && age > 20) {
+          t.decay = true;
+          t.targetScale = 0.01;
+        }
+
+        t.mesh.scale.x += (t.targetScale - t.mesh.scale.x) * 0.05;
+        t.mesh.scale.y += (t.targetScale - t.mesh.scale.y) * 0.05;
+        t.mesh.scale.z += (t.targetScale - t.mesh.scale.z) * 0.05;
+
+        if (t.decay && t.mesh.scale.x <= 0.02) {
+          disposeTentacle(t);
+          activeTentacles.splice(i, 1);
+        }
+      }
+    };
+
+    const start = () => {
+      if (disposed) return;
+      THREEInstance = window.THREE;
+      if (!THREEInstance) {
+        waitForThreeRAF = requestAnimationFrame(start);
+        return;
+      }
+
+      scene = new THREEInstance.Scene();
+      uniforms = {
+        uTime: { value: 0 },
+        uHeal: { value: 0 },
+        uHit: { value: 0 }
+      };
+
+      initRenderer();
+      for (let i = 0; i < 6; i++) {
+        const timeoutId = window.setTimeout(spawnTentacle, i * 350);
+        spawnTimeouts.push(timeoutId);
+      }
+      spawnInterval = window.setInterval(spawnTentacle, 3500);
+
+      const animate = (time) => {
+        uniforms.uTime.value = time * 0.001;
+        updateTentacles(uniforms.uTime.value);
+        if (renderer && scene && camera) {
+          renderer.render(scene, camera);
+        }
+        animationFrame = requestAnimationFrame(animate);
+      };
+      animationFrame = requestAnimationFrame(animate);
+
+      resizeHandler = () => {
+        if (!renderer || !camera) return;
+        const { width, height } = getDimensions();
+        renderer.setSize(width, height);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      };
+      window.addEventListener('resize', resizeHandler);
+    };
+
+    start();
+
+    return () => {
+      disposed = true;
+      if (waitForThreeRAF) cancelAnimationFrame(waitForThreeRAF);
+      spawnTimeouts.forEach(clearTimeout);
+      if (spawnInterval) clearInterval(spawnInterval);
+      if (resizeHandler) window.removeEventListener('resize', resizeHandler);
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      activeTentacles.forEach(disposeTentacle);
+      activeTentacles.length = 0;
+      if (renderer) {
+        renderer.dispose();
+        if (renderer.domElement && container.contains(renderer.domElement)) {
+          container.removeChild(renderer.domElement);
+        }
+      }
+    };
   }, []);
 
   const getCanvasPoint = useCallback((nativeEvent) => {
@@ -840,34 +1093,6 @@ const DrawingPhase = ({ onFinish }) => {
     onFinish(points);
   };
 
-  const tentacleConfigs = useMemo(() => {
-    return Array.from({ length: 45 }, () => ({
-      left: -10 + Math.random() * 120,
-      width: 1 + Math.random() * 3,
-      segments: 18 + Math.floor(Math.random() * 20),
-      height: 120 + Math.random() * 90, // vh
-      delay: Math.random() * 3,
-      duration: 6 + Math.random() * 5,
-      hueShift: Math.random() * 40,
-      amplitude: 15 + Math.random() * 25,
-      phase: Math.random() * Math.PI * 2,
-      waveFreq: 1.5 + Math.random() * 3
-    }));
-  }, []);
-
-  const tentacleStyles = `
-    @keyframes tentacleRise {
-      0% { transform: scale(0.6, 0); opacity: 0; }
-      50% { opacity: 0.9; }
-      100% { transform: scale(1.1, 1.2); opacity: 1; }
-    }
-    @keyframes ringPulse {
-      0% { transform: translate(-50%, 0) translateX(calc(var(--offsetX, 0px) * 0.6)) scale(0.8); opacity: 0.35; }
-      50% { transform: translate(-50%, 0) translateX(calc(var(--offsetX, 0px) * 1.25)) scale(1.2); opacity: 1; }
-      100% { transform: translate(-50%, 0) translateX(calc(var(--offsetX, 0px) * 0.8)) scale(0.9); opacity: 0.5; }
-    }
-  `;
-
   return (
     <div style={{
       display: 'flex', 
@@ -875,78 +1100,14 @@ const DrawingPhase = ({ onFinish }) => {
       alignItems: 'center', 
       justifyContent: 'center', 
       height: '100vh',
-      background: 'radial-gradient(circle at top, rgba(30,30,30,0.9), #050505)',
+      background: 'radial-gradient(circle at top, rgba(30,30,30,0.95), #050505)',
       position: 'relative',
       overflow: 'hidden'
     }}>
-      <style>{tentacleStyles}</style>
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        overflow: 'hidden',
-        maskImage: 'none',
-        zIndex: 0,
-        pointerEvents: 'none'
-      }}>
-        {tentacleConfigs.map((tentacle, index) => {
-          const ringCount = tentacle.segments;
-          const dotPositions = ['50% 10%', '20% 50%', '80% 50%', '50% 90%', '15% 25%', '85% 25%', '30% 80%', '70% 80%'];
-          return (
-            <div
-              key={`tentacle-${index}`}
-              style={{
-                position: 'absolute',
-                bottom: '-50vh',
-                left: `${tentacle.left}%`,
-                width: `${tentacle.width}px`,
-                height: `${tentacle.height}vh`,
-                filter: 'drop-shadow(0 0 12px rgba(255, 120, 190, 0.45))',
-                transformOrigin: 'bottom center',
-                animation: `tentacleRise ${tentacle.duration}s ease-in-out infinite`,
-                animationDelay: `${tentacle.delay}s`,
-                animationDirection: 'alternate'
-              }}
-            >
-              {Array.from({ length: ringCount }).map((_, ringIdx) => {
-                const progress = ringIdx / ringCount;
-                const offsetX = Math.sin(progress * tentacle.waveFreq + tentacle.phase) * tentacle.amplitude;
-                const ringSize = 18 + Math.sin(progress * Math.PI) * 14;
-                const green = Math.min(255, 120 + tentacle.hueShift);
-                const blue = Math.min(255, 200 + tentacle.hueShift);
-                const ringColor = `rgba(255, ${green}, ${blue}, ${0.3 + progress * 0.7})`;
-                const dotRadius = Math.max(1.5, ringSize * 0.08).toFixed(1);
-                const gradientParts = dotPositions.map(pos => `radial-gradient(circle at ${pos}, ${ringColor} 0 ${dotRadius}px, transparent ${parseFloat(dotRadius) + 1}px)`);
-                return (
-                  <div
-                    key={`ring-${index}-${ringIdx}`}
-                    style={{
-                      position: 'absolute',
-                      left: '50%',
-                      top: `${(1 - progress) * 100}%`,
-                      width: `${ringSize}px`,
-                      height: `${ringSize * 0.6}px`,
-                      borderRadius: '50%',
-                      backgroundImage: gradientParts.join(','),
-                      border: `1px solid rgba(255, 80, 160, 0.35)`,
-                      boxShadow: `0 0 ${ringSize * 0.4}px ${ringColor}`,
-                      filter: 'blur(0.2px)',
-                      mixBlendMode: 'screen',
-                      '--offsetX': `${offsetX}px`,
-                      animation: `ringPulse ${3.5 + Math.random() * 2.5}s ease-in-out infinite`,
-                      animationDelay: `${tentacle.delay + progress * 1.2}s`
-                    }}
-                  />
-                );
-              })}
-            </div>
-          );
-        })}
-        <div style={{
-          position: 'absolute',
-          inset: '0',
-          background: 'radial-gradient(circle at top, rgba(255, 255, 255, 0.04), transparent 60%)'
-        }} />
-      </div>
+      <div
+        ref={tentacleBackgroundRef}
+        style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}
+      />
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '100vw' }}>
         <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
         <div style={{ position: 'relative', padding: '18px', borderRadius: '18px', background: 'rgba(5,5,5,0.95)', boxShadow: '0 0 40px rgba(255, 80, 140, 0.2)' }}>
@@ -1021,10 +1182,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const healIntensityRef = useRef(0);
   const hitIntensityRef = useRef(0);
   const animationFrameRef = useRef(0);
-
-  // Config for Tentacle Aesthetics
-  const MAX_RINGS = 60; // How many transverse rings
-  const POINTS_PER_RING = 30; // Points in one circle
 
   useEffect(() => {
     const THREE = window.THREE;
@@ -1321,7 +1478,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
         // 3. Generate Ring Data (High Density)
         const tipColor = new THREE.Color(0xFF007F); // Hot Pink
         const { points, sizes, colors } = generateRingedPoints(
-             THREE, curve, MAX_RINGS, POINTS_PER_RING, 0.8, rootColor, tipColor
+             THREE, curve, TENTACLE_MAX_RINGS, TENTACLE_POINTS_PER_RING, 0.8, rootColor, tipColor
         );
 
         const particles = new Float32Array(points);
@@ -1532,7 +1689,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
                   // 3. Re-generate Geometry
                   const { points } = generateRingedPoints(
-                      THREE, curve, MAX_RINGS, POINTS_PER_RING, 0.8, rootColor, tipColor
+                      THREE, curve, TENTACLE_MAX_RINGS, TENTACLE_POINTS_PER_RING, 0.8, rootColor, tipColor
                   );
                   
                   const attPos = mesh.geometry.attributes.position;
