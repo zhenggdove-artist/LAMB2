@@ -841,26 +841,27 @@ const DrawingPhase = ({ onFinish }) => {
   };
 
   const tentacleConfigs = useMemo(() => {
-    const createGroup = (count, minLeft, maxLeft) => {
-      return Array.from({ length: count }, (_, idx) => ({
-        left: `${minLeft + Math.random() * (maxLeft - minLeft)}%`,
-        width: `${1 + Math.random() * 2.5}px`,
-        height: `${110 + Math.random() * 30}%`,
-        delay: `${idx * 0.35 + Math.random() * 0.4}s`,
-        duration: `${5 + Math.random() * 3}s`
-      }));
-    };
-    return [
-      ...createGroup(6, -5, 12), // Left edge cluster
-      ...createGroup(6, 88, 105) // Right edge cluster
-    ];
+    return Array.from({ length: 40 }, (_, idx) => ({
+      left: `${-5 + Math.random() * 110}%`,
+      width: `${1 + Math.random() * 3}px`,
+      segments: 6 + Math.floor(Math.random() * 5),
+      height: `${105 + Math.random() * 60}%`,
+      delay: `${Math.random() * 4}s`,
+      duration: `${6 + Math.random() * 5}s`,
+      hueShift: Math.random() * 30,
+    }));
   }, []);
 
   const tentacleStyles = `
     @keyframes tentacleRise {
-      0% { transform: scaleY(0.1); opacity: 0; }
-      35% { opacity: 0.5; }
-      100% { transform: scaleY(1.2); opacity: 0.9; }
+      0% { transform: scale(0.6, 0); opacity: 0; }
+      50% { opacity: 0.8; }
+      100% { transform: scale(1.2, 1.2); opacity: 1; }
+    }
+    @keyframes tentacleTwist {
+      0% { transform: rotate(0deg); }
+      50% { transform: rotate(6deg); }
+      100% { transform: rotate(-4deg); }
     }
   `;
 
@@ -880,56 +881,108 @@ const DrawingPhase = ({ onFinish }) => {
         position: 'absolute',
         inset: 0,
         overflow: 'hidden',
+        maskImage: 'none',
+        zIndex: 0,
         pointerEvents: 'none'
       }}>
-        {tentacleConfigs.map((tentacle, index) => (
-          <div
-            key={`tentacle-${index}`}
-            style={{
-              position: 'absolute',
-              bottom: '-10%',
-              left: tentacle.left,
-              width: tentacle.width,
-              height: tentacle.height,
-              background: 'linear-gradient(180deg, rgba(0,255,170,0.15) 0%, rgba(0,80,40,0.8) 80%)',
-              filter: 'blur(0.5px)',
-              transformOrigin: 'bottom center',
-              animation: `tentacleRise ${tentacle.duration} ease-in forwards`,
-              animationDelay: tentacle.delay,
-              animationIterationCount: 'infinite',
-              animationDirection: 'alternate',
-            }}
-          />
-        ))}
+        {tentacleConfigs.map((tentacle, index) => {
+          const segments = Array.from({ length: tentacle.segments }, (_, segIdx) => ({
+            top: `${segIdx * (100 / tentacle.segments)}%`,
+            skew: `${(Math.random() - 0.5) * 25}deg`,
+            scaleX: 0.8 + Math.random() * 0.4,
+            height: `${120 / tentacle.segments}%`
+          }));
+          const baseColor = `rgba(255, ${120 + tentacle.hueShift}, ${180 + tentacle.hueShift}, 0.85)`;
+          const darkerColor = `rgba(120, 0, 40, 0.9)`;
+          return (
+            <div
+              key={`tentacle-${index}`}
+              style={{
+                position: 'absolute',
+                bottom: '-30%',
+                left: tentacle.left,
+                width: tentacle.width,
+                height: tentacle.height,
+                filter: 'drop-shadow(0 0 12px rgba(255, 100, 150, 0.35))',
+                transformOrigin: 'bottom center',
+                animation: `tentacleRise ${tentacle.duration} ease-in forwards`,
+                animationDelay: tentacle.delay,
+                animationIterationCount: 'infinite',
+                animationDirection: 'alternate'
+              }}
+            >
+              {segments.map((seg, segIdx) => (
+                <div
+                  key={`segment-${index}-${segIdx}`}
+                  style={{
+                    position: 'absolute',
+                    left: '-200%',
+                    right: '-200%',
+                    bottom: seg.top,
+                    height: seg.height,
+                    background: `radial-gradient(circle at 30% 20%, ${baseColor}, ${darkerColor})`,
+                    borderRadius: '50% / 120%',
+                    transform: `skewX(${seg.skew}) scaleX(${seg.scaleX}) translateY(${(Math.random() - 0.5) * 20}px)`,
+                    animation: `tentacleTwist ${tentacle.duration} ease-in-out infinite`,
+                    animationDelay: `${parseFloat(tentacle.delay) + segIdx * 0.2}s`,
+                    opacity: 0.85
+                  }}
+                />
+              ))}
+            </div>
+          );
+        })}
+        <div style={{
+          position: 'absolute',
+          inset: '0',
+          background: 'radial-gradient(circle at top, rgba(255, 255, 255, 0.04), transparent 60%)'
+        }} />
       </div>
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '100vw' }}>
         <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
-        <canvas
-          ref={canvasRef}
-          onPointerDown={startDrawing}
-          onPointerUp={finishDrawing}
-          onPointerMove={draw}
-          onPointerLeave={finishDrawing}
-          onPointerCancel={finishDrawing}
-          style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.15)' }}
-        />
-        <button 
-          onClick={handleFinish}
-          className="neural-text"
-          style={{
-            marginTop: '20px',
+        <div style={{ position: 'relative' }}>
+          <canvas
+            ref={canvasRef}
+            onPointerDown={startDrawing}
+            onPointerUp={finishDrawing}
+            onPointerMove={draw}
+            onPointerLeave={finishDrawing}
+            onPointerCancel={finishDrawing}
+            style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.15)', position: 'relative', zIndex: 2}}
+          />
+          <div style={{
+            position: 'absolute',
+            inset: '-20px',
             background: 'transparent',
-            color: '#00ff00',
-            border: '1px solid #00ff00',
-            padding: '10px 30px',
-            fontFamily: 'Megrim',
-            fontSize: '24px',
-            cursor: 'pointer',
-            fontWeight: 'bold'
-          }}
-        >
-          INITIATE LIFE
-        </button>
+            zIndex: 1
+          }} />
+        </div>
+        <div style={{ position: 'relative', marginTop: '20px' }}>
+          <div style={{
+            position: 'absolute',
+            inset: '-10px',
+            background: 'transparent',
+            zIndex: 1
+          }} />
+          <button 
+            onClick={handleFinish}
+            className="neural-text"
+            style={{
+              background: 'transparent',
+              color: '#00ff00',
+              border: '1px solid #00ff00',
+              padding: '10px 30px',
+              fontFamily: 'Megrim',
+              fontSize: '24px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              position: 'relative',
+              zIndex: 2
+            }}
+          >
+            INITIATE LIFE
+          </button>
+        </div>
       </div>
     </div>
   );
