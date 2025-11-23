@@ -1021,7 +1021,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(pointData, 3));
     
     // Very small points for "Neural Cloud" look
-    const sizes = new Float32Array(pointData.length / 3).fill(0.05); 
+    const sizes = new Float32Array(pointData.length / 3).fill(0.1); 
     geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
     
     const colors = [];
@@ -1344,7 +1344,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       if (intersects.length > 0) {
         healIntensityRef.current = 1.0;
         setHealth(prev => {
-            const newHealth = prev + 10;
+            const newHealth = prev + 5;
             healthRef.current = newHealth;
             return newHealth;
         });
