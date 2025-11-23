@@ -841,27 +841,30 @@ const DrawingPhase = ({ onFinish }) => {
   };
 
   const tentacleConfigs = useMemo(() => {
-    return Array.from({ length: 40 }, (_, idx) => ({
-      left: `${-5 + Math.random() * 110}%`,
-      width: `${1 + Math.random() * 3}px`,
-      segments: 6 + Math.floor(Math.random() * 5),
-      height: `${105 + Math.random() * 60}%`,
-      delay: `${Math.random() * 4}s`,
-      duration: `${6 + Math.random() * 5}s`,
-      hueShift: Math.random() * 30,
+    return Array.from({ length: 45 }, () => ({
+      left: -10 + Math.random() * 120,
+      width: 1 + Math.random() * 3,
+      segments: 18 + Math.floor(Math.random() * 20),
+      height: 120 + Math.random() * 90, // vh
+      delay: Math.random() * 3,
+      duration: 6 + Math.random() * 5,
+      hueShift: Math.random() * 40,
+      amplitude: 15 + Math.random() * 25,
+      phase: Math.random() * Math.PI * 2,
+      waveFreq: 1.5 + Math.random() * 3
     }));
   }, []);
 
   const tentacleStyles = `
     @keyframes tentacleRise {
       0% { transform: scale(0.6, 0); opacity: 0; }
-      50% { opacity: 0.8; }
-      100% { transform: scale(1.2, 1.2); opacity: 1; }
+      50% { opacity: 0.9; }
+      100% { transform: scale(1.1, 1.2); opacity: 1; }
     }
-    @keyframes tentacleTwist {
-      0% { transform: rotate(0deg); }
-      50% { transform: rotate(6deg); }
-      100% { transform: rotate(-4deg); }
+    @keyframes ringPulse {
+      0% { transform: translate(-50%, 0) translateX(calc(var(--offsetX, 0px) * 0.6)) scale(0.8); opacity: 0.35; }
+      50% { transform: translate(-50%, 0) translateX(calc(var(--offsetX, 0px) * 1.25)) scale(1.2); opacity: 1; }
+      100% { transform: translate(-50%, 0) translateX(calc(var(--offsetX, 0px) * 0.8)) scale(0.9); opacity: 0.5; }
     }
   `;
 
@@ -886,49 +889,55 @@ const DrawingPhase = ({ onFinish }) => {
         pointerEvents: 'none'
       }}>
         {tentacleConfigs.map((tentacle, index) => {
-          const segments = Array.from({ length: tentacle.segments }, (_, segIdx) => ({
-            top: `${segIdx * (100 / tentacle.segments)}%`,
-            skew: `${(Math.random() - 0.5) * 25}deg`,
-            scaleX: 0.8 + Math.random() * 0.4,
-            height: `${120 / tentacle.segments}%`
-          }));
-          const baseColor = `rgba(255, ${120 + tentacle.hueShift}, ${180 + tentacle.hueShift}, 0.85)`;
-          const darkerColor = `rgba(120, 0, 40, 0.9)`;
+          const ringCount = tentacle.segments;
+          const dotPositions = ['50% 10%', '20% 50%', '80% 50%', '50% 90%', '15% 25%', '85% 25%', '30% 80%', '70% 80%'];
           return (
             <div
               key={`tentacle-${index}`}
               style={{
                 position: 'absolute',
-                bottom: '-30%',
-                left: tentacle.left,
-                width: tentacle.width,
-                height: tentacle.height,
-                filter: 'drop-shadow(0 0 12px rgba(255, 100, 150, 0.35))',
+                bottom: '-50vh',
+                left: `${tentacle.left}%`,
+                width: `${tentacle.width}px`,
+                height: `${tentacle.height}vh`,
+                filter: 'drop-shadow(0 0 12px rgba(255, 120, 190, 0.45))',
                 transformOrigin: 'bottom center',
-                animation: `tentacleRise ${tentacle.duration} ease-in forwards`,
-                animationDelay: tentacle.delay,
-                animationIterationCount: 'infinite',
+                animation: `tentacleRise ${tentacle.duration}s ease-in-out infinite`,
+                animationDelay: `${tentacle.delay}s`,
                 animationDirection: 'alternate'
               }}
             >
-              {segments.map((seg, segIdx) => (
-                <div
-                  key={`segment-${index}-${segIdx}`}
-                  style={{
-                    position: 'absolute',
-                    left: '-200%',
-                    right: '-200%',
-                    bottom: seg.top,
-                    height: seg.height,
-                    background: `radial-gradient(circle at 30% 20%, ${baseColor}, ${darkerColor})`,
-                    borderRadius: '50% / 120%',
-                    transform: `skewX(${seg.skew}) scaleX(${seg.scaleX}) translateY(${(Math.random() - 0.5) * 20}px)`,
-                    animation: `tentacleTwist ${tentacle.duration} ease-in-out infinite`,
-                    animationDelay: `${parseFloat(tentacle.delay) + segIdx * 0.2}s`,
-                    opacity: 0.85
-                  }}
-                />
-              ))}
+              {Array.from({ length: ringCount }).map((_, ringIdx) => {
+                const progress = ringIdx / ringCount;
+                const offsetX = Math.sin(progress * tentacle.waveFreq + tentacle.phase) * tentacle.amplitude;
+                const ringSize = 18 + Math.sin(progress * Math.PI) * 14;
+                const green = Math.min(255, 120 + tentacle.hueShift);
+                const blue = Math.min(255, 200 + tentacle.hueShift);
+                const ringColor = `rgba(255, ${green}, ${blue}, ${0.3 + progress * 0.7})`;
+                const dotRadius = Math.max(1.5, ringSize * 0.08).toFixed(1);
+                const gradientParts = dotPositions.map(pos => `radial-gradient(circle at ${pos}, ${ringColor} 0 ${dotRadius}px, transparent ${parseFloat(dotRadius) + 1}px)`);
+                return (
+                  <div
+                    key={`ring-${index}-${ringIdx}`}
+                    style={{
+                      position: 'absolute',
+                      left: '50%',
+                      top: `${(1 - progress) * 100}%`,
+                      width: `${ringSize}px`,
+                      height: `${ringSize * 0.6}px`,
+                      borderRadius: '50%',
+                      backgroundImage: gradientParts.join(','),
+                      border: `1px solid rgba(255, 80, 160, 0.35)`,
+                      boxShadow: `0 0 ${ringSize * 0.4}px ${ringColor}`,
+                      filter: 'blur(0.2px)',
+                      mixBlendMode: 'screen',
+                      '--offsetX': `${offsetX}px`,
+                      animation: `ringPulse ${3.5 + Math.random() * 2.5}s ease-in-out infinite`,
+                      animationDelay: `${tentacle.delay + progress * 1.2}s`
+                    }}
+                  />
+                );
+              })}
             </div>
           );
         })}
@@ -940,7 +949,7 @@ const DrawingPhase = ({ onFinish }) => {
       </div>
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '100vw' }}>
         <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', padding: '18px', borderRadius: '18px', background: 'rgba(5,5,5,0.95)', boxShadow: '0 0 40px rgba(255, 80, 140, 0.2)' }}>
           <canvas
             ref={canvasRef}
             onPointerDown={startDrawing}
@@ -948,36 +957,22 @@ const DrawingPhase = ({ onFinish }) => {
             onPointerMove={draw}
             onPointerLeave={finishDrawing}
             onPointerCancel={finishDrawing}
-            style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.15)', position: 'relative', zIndex: 2}}
+            style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.25)', position: 'relative', zIndex: 2}}
           />
-          <div style={{
-            position: 'absolute',
-            inset: '-20px',
-            background: 'transparent',
-            zIndex: 1
-          }} />
         </div>
-        <div style={{ position: 'relative', marginTop: '20px' }}>
-          <div style={{
-            position: 'absolute',
-            inset: '-10px',
-            background: 'transparent',
-            zIndex: 1
-          }} />
+        <div style={{ position: 'relative', marginTop: '30px', padding: '12px 24px', borderRadius: '12px', background: 'rgba(5,5,5,0.95)', boxShadow: '0 0 30px rgba(255,80,160,0.2)' }}>
           <button 
             onClick={handleFinish}
             className="neural-text"
             style={{
-              background: 'transparent',
+              background: 'rgba(0,0,0,0.6)',
               color: '#00ff00',
               border: '1px solid #00ff00',
               padding: '10px 30px',
               fontFamily: 'Megrim',
               fontSize: '24px',
               cursor: 'pointer',
-              fontWeight: 'bold',
-              position: 'relative',
-              zIndex: 2
+              fontWeight: 'bold'
             }}
           >
             INITIATE LIFE
@@ -1169,6 +1164,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const rightEdgeThresholdIndex = Math.floor(candidates.length * 0.05);
     const rightEdgePoints = candidates.slice(0, Math.max(20, rightEdgeThresholdIndex));
 
+    const eyeScale = isMobile ? 2.25 : 1.5;
+
     const createEye = (type) => {
         let px=0, py=0, pz=0;
         
@@ -1221,7 +1218,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
         
         const mesh = new THREE.Points(eyeGeo, eyeMat);
         mesh.position.set(px, py, pz + 1.0); 
-        mesh.scale.set(1.5, 1.5, 1.5);
+        mesh.scale.set(eyeScale, eyeScale, eyeScale);
         cloud.add(mesh);
 
         // Register controller
@@ -1663,7 +1660,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       horrorGrowthsRef.current = [];
       bloodParticlesRef.current = [];
     };
-  }, []);
+  }, [pointData, isMobile]);
 
   const createBullet = useCallback((scene) => {
       const THREE = window.THREE;
@@ -1748,9 +1745,21 @@ const GamePhase = ({ pointData, onGameOver }) => {
   };
 
   return (
-    <>
+    <div style={{ position: 'relative', width: '100%', minHeight: '100vh' }}>
       {/* 3D Container */}
-      <div ref={mountRef} style={{ width: '100vw', height: '100vh', position: 'absolute', top: 0, left: 0, zIndex: 1, backgroundColor: '#000', overflow: 'hidden' }} />
+      <div
+        ref={mountRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 1,
+          backgroundColor: '#000',
+          overflow: 'visible'
+        }}
+      />
       
       {/* HUD Layer - FUTURISTIC/NEURAL STYLE */}
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
@@ -1775,10 +1784,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
         <div className="neural-text" style={healthLabelStyle}>
             <span style={{ fontSize: symbolFontSize }}>∿</span> 
             VESSEL SYNAPSE: {health}% 
-            {health > 100 && <span className="horror-text" style={{ marginLeft: isMobile ? '6px' : '10px', fontSize: overgrowthFontSize }}>(OVERGROWTH)</span>}
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
