@@ -742,25 +742,11 @@ const DrawingPhase = ({ onFinish }) => {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const contextRef = useRef(null);
-  const tentacleBackgroundRef = useRef(null);
-  const tentacleConfigs = useMemo(() => {
-    return Array.from({ length: 30 }, () => ({
-      origin: DRAW_TENTACLE_ORIGINS[Math.floor(Math.random() * DRAW_TENTACLE_ORIGINS.length)],
-      spread: Math.random() * 100,
-      size: 35 + Math.random() * 55,
-      thickness: 1 + Math.random() * 3,
-      color: DRAW_TENTACLE_COLORS[Math.floor(Math.random() * DRAW_TENTACLE_COLORS.length)],
-      delay: Math.random() * 4,
-      duration: 5 + Math.random() * 5,
-      bend: (Math.random() - 0.5) * 40
-    }));
-  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // High DPI Canvas
     canvas.width = 600;
     canvas.height = 600;
     canvas.style.width = '300px';
@@ -773,279 +759,9 @@ const DrawingPhase = ({ onFinish }) => {
       ctx.strokeStyle = 'black';
       ctx.lineWidth = 4;
       contextRef.current = ctx;
-      
-      // Clear white
       ctx.fillStyle = '#E1C4C4';
       ctx.fillRect(0, 0, 300, 300);
     }
-  }, []);
-
-  useEffect(() => {
-    const container = tentacleBackgroundRef.current;
-    if (!container) return;
-
-    let renderer = null;
-    let scene = null;
-    let camera = null;
-    let uniforms = null;
-    let animationFrame = 0;
-    let spawnInterval = 0;
-    const spawnTimeouts = [];
-    const activeTentacles = [];
-    let waitForThreeRAF = 0;
-    let resizeHandler = null;
-    let disposed = false;
-
-    const disposeTentacle = (tentacle) => {
-      if (!tentacle || !scene) return;
-      scene.remove(tentacle.mesh);
-      tentacle.mesh.geometry.dispose();
-      if (tentacle.mesh.material?.dispose) tentacle.mesh.material.dispose();
-    };
-
-    const getDimensions = () => ({
-      width: container.clientWidth || window.innerWidth,
-      height: container.clientHeight || window.innerHeight
-    });
-
-    const initRenderer = (THREE) => {
-      const { width, height } = getDimensions();
-      camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 400);
-      camera.position.set(0, 0, 110);
-
-      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.setSize(width, height);
-      Object.assign(renderer.domElement.style, {
-        position: 'absolute',
-        inset: '0',
-        pointerEvents: 'none',
-        width: '100%',
-        height: '100%'
-      });
-      container.appendChild(renderer.domElement);
-    };
-
-    const createBackgroundTentacle = (THREE) => {
-      const side = Math.floor(Math.random() * 4);
-      const root = new THREE.Vector3();
-      const dir = new THREE.Vector3();
-      const depth = (Math.random() - 0.5) * 20;
-      switch (side) {
-        case 0: // top
-          root.set((Math.random() - 0.5) * 80, 45 + Math.random() * 15, depth);
-          dir.set((Math.random() - 0.5) * 0.8, -1, (Math.random() - 0.5) * 0.3);
-          break;
-        case 1: // bottom
-          root.set((Math.random() - 0.5) * 80, -45 - Math.random() * 15, depth);
-          dir.set((Math.random() - 0.5) * 0.8, 1, (Math.random() - 0.5) * 0.3);
-          break;
-        case 2: // left
-          root.set(-45 - Math.random() * 15, (Math.random() - 0.5) * 60, depth);
-          dir.set(1, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.3);
-          break;
-        default: // right
-          root.set(45 + Math.random() * 15, (Math.random() - 0.5) * 60, depth);
-          dir.set(-1, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.3);
-          break;
-      }
-      dir.normalize();
-
-      const pathPoints = [];
-      const numSegments = 25;
-      const length = 30 + Math.random() * 20;
-      const phase = Math.random() * Math.PI * 2;
-      const twist = (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 3);
-      for (let i = 0; i < numSegments; i++) {
-        const t = i / (numSegments - 1);
-        const base = dir.clone().multiplyScalar(t * length);
-        base.x += Math.sin(t * Math.PI * 4 + phase) * (4 + t * 7) + twist * t;
-        base.y += Math.cos(t * Math.PI * 3 + phase * 0.5) * (2 + t * 3);
-        base.z += Math.sin(t * Math.PI * 2 + phase) * (2 + t * 5);
-        pathPoints.push(base);
-      }
-
-      const curve = new THREE.CatmullRomCurve3(pathPoints);
-      const rootColor = new THREE.Color().setHSL(0.85 + Math.random() * 0.1, 0.65, 0.75);
-      const tipColor = new THREE.Color().setHSL(0.97 + Math.random() * 0.02, 0.85, 0.65);
-      const { points, sizes, colors } = generateRingedPoints(
-        THREE,
-        curve,
-        TENTACLE_MAX_RINGS,
-        TENTACLE_POINTS_PER_RING,
-        0.75,
-        rootColor,
-        tipColor
-      );
-
-      const geometry = new THREE.BufferGeometry();
-      const positionAttr = new THREE.BufferAttribute(new Float32Array(points), 3);
-      const colorAttr = new THREE.BufferAttribute(new Float32Array(colors), 3);
-      positionAttr.setUsage(THREE.DynamicDrawUsage);
-      colorAttr.setUsage(THREE.DynamicDrawUsage);
-      geometry.setAttribute('position', positionAttr);
-      geometry.setAttribute('size', new THREE.BufferAttribute(new Float32Array(sizes), 1));
-      geometry.setAttribute('customColor', colorAttr);
-
-      const material = new THREE.ShaderMaterial({
-        uniforms,
-        vertexShader,
-        fragmentShader,
-        blending: THREE.AdditiveBlending,
-        depthTest: false,
-        transparent: true
-      });
-
-      const mesh = new THREE.Points(geometry, material);
-      mesh.position.copy(root);
-      mesh.scale.set(0.01, 0.01, 0.01);
-      scene.add(mesh);
-
-      return {
-        mesh,
-        curve,
-        restPoints: pathPoints.map((p) => p.clone()),
-        rootColor,
-        tipColor,
-        originalColors: new Float32Array(colors),
-        seed: Math.random() * 1000,
-        speed: 0.6 + Math.random() * 0.8,
-        spiralFactor: (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2.5),
-        targetScale: 0.4 + Math.random() * 0.7,
-        createdAt: performance.now(),
-        decay: false
-      };
-    };
-
-    const spawnTentacle = () => {
-      const THREE = window.THREE;
-      if (!THREE || !scene) return;
-      const tentacle = createBackgroundTentacle(THREE);
-      if (!tentacle) return;
-      activeTentacles.push(tentacle);
-      if (activeTentacles.length > 10) {
-        const old = activeTentacles.shift();
-        disposeTentacle(old);
-      }
-    };
-
-    const updateTentacles = (seconds) => {
-      const THREE = window.THREE;
-      if (!THREE) return;
-      const now = performance.now();
-      for (let i = activeTentacles.length - 1; i >= 0; i--) {
-        const t = activeTentacles[i];
-        const curvePoints = t.curve.points;
-        for (let j = 1; j < curvePoints.length; j++) {
-          const rest = t.restPoints[j];
-          const amp = (j / curvePoints.length) * 3.0;
-          const tt = seconds * t.speed + j * 0.25;
-          const spiralX = Math.sin(tt) * Math.cos(tt * 0.6) * t.spiralFactor;
-          const spiralY = Math.cos(tt) * Math.sin(tt * 0.5) * t.spiralFactor * 0.4;
-          curvePoints[j].x = rest.x + Math.sin(tt + t.seed) * amp + spiralX;
-          curvePoints[j].y = rest.y + Math.cos(tt * 0.8 + t.seed) * amp * 0.3 + spiralY;
-          curvePoints[j].z = rest.z + Math.sin(tt * 0.6 + t.seed) * amp * 0.6;
-        }
-
-        const { points } = generateRingedPoints(
-          THREE,
-          t.curve,
-          TENTACLE_MAX_RINGS,
-          TENTACLE_POINTS_PER_RING,
-          0.75,
-          t.rootColor,
-          t.tipColor
-        );
-        const posAttr = t.mesh.geometry.attributes.position;
-        const colAttr = t.mesh.geometry.attributes.customColor;
-        for (let k = 0; k < points.length; k++) {
-          posAttr.array[k] = points[k];
-        }
-        posAttr.needsUpdate = true;
-
-        const brightness = Math.max(0.25, Math.min(1.2, t.mesh.scale.x * 1.8));
-        const baseColors = t.originalColors;
-        for (let c = 0; c < baseColors.length; c++) {
-          colAttr.array[c] = baseColors[c] * brightness;
-        }
-        colAttr.needsUpdate = true;
-
-        const age = (now - t.createdAt) / 1000;
-        if (!t.decay && age > 18) {
-          t.decay = true;
-          t.targetScale = 0.01;
-        }
-
-        t.mesh.scale.x += (t.targetScale - t.mesh.scale.x) * 0.05;
-        t.mesh.scale.y += (t.targetScale - t.mesh.scale.y) * 0.05;
-        t.mesh.scale.z += (t.targetScale - t.mesh.scale.z) * 0.05;
-
-        if (t.decay && t.mesh.scale.x <= 0.02) {
-          disposeTentacle(t);
-          activeTentacles.splice(i, 1);
-        }
-      }
-    };
-
-    const start = () => {
-      const THREE = window.THREE;
-      if (!THREE) {
-        waitForThreeRAF = requestAnimationFrame(start);
-        return;
-      }
-      if (disposed) return;
-
-      scene = new THREE.Scene();
-      uniforms = {
-        uTime: { value: 0 },
-        uHeal: { value: 0 },
-        uHit: { value: 0 }
-      };
-      initRenderer(THREE);
-      for (let i = 0; i < 4; i++) {
-        const timeoutId = window.setTimeout(spawnTentacle, i * 400);
-        spawnTimeouts.push(timeoutId);
-      }
-      spawnInterval = window.setInterval(spawnTentacle, 3200);
-
-      const animate = (time) => {
-        uniforms.uTime.value = time * 0.001;
-        updateTentacles(uniforms.uTime.value);
-        if (renderer && scene && camera) {
-          renderer.render(scene, camera);
-        }
-        animationFrame = requestAnimationFrame(animate);
-      };
-      animationFrame = requestAnimationFrame(animate);
-
-      resizeHandler = () => {
-        if (!renderer || !camera) return;
-        const { width, height } = getDimensions();
-        renderer.setSize(width, height);
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-      };
-      window.addEventListener('resize', resizeHandler);
-    };
-
-    start();
-
-    return () => {
-      disposed = true;
-      if (waitForThreeRAF) cancelAnimationFrame(waitForThreeRAF);
-      spawnTimeouts.forEach(clearTimeout);
-      if (spawnInterval) clearInterval(spawnInterval);
-      if (resizeHandler) window.removeEventListener('resize', resizeHandler);
-      if (animationFrame) cancelAnimationFrame(animationFrame);
-      activeTentacles.forEach(disposeTentacle);
-      activeTentacles.length = 0;
-      if (renderer) {
-        renderer.dispose();
-        if (renderer.domElement && container.contains(renderer.domElement)) {
-          container.removeChild(renderer.domElement);
-        }
-      }
-    };
   }, []);
 
   const getCanvasPoint = useCallback((nativeEvent) => {
@@ -1161,39 +877,35 @@ const DrawingPhase = ({ onFinish }) => {
       alignItems: 'center', 
       justifyContent: 'center', 
       height: '100vh',
-      background: 'radial-gradient(circle at top, rgba(20,20,20,0.95), #050505)',
-      position: 'relative',
-      overflow: 'hidden'
+      background: 'radial-gradient(circle at top, rgba(20,20,20,0.95), #050505)'
     }}>
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }} ref={tentacleBackgroundRef} />
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '100vw', gap: '20px' }}>
-        <h2 className="neural-text" style={{color: '#00ff00', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
-        <canvas
-          ref={canvasRef}
-          onPointerDown={startDrawing}
-          onPointerUp={finishDrawing}
-          onPointerMove={draw}
-          onPointerLeave={finishDrawing}
-          onPointerCancel={finishDrawing}
-          style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.25)' }}
-        />
-        <button 
-          onClick={handleFinish}
-          className="neural-text"
-          style={{
-            background: 'rgba(0,0,0,0.4)',
-            color: '#00ff00',
-            border: '1px solid #00ff00',
-            padding: '10px 30px',
-            fontFamily: 'Megrim',
-            fontSize: '24px',
-            cursor: 'pointer',
-            fontWeight: 'bold'
-          }}
-        >
-          INITIATE LIFE
-        </button>
-      </div>
+      <h2 className="neural-text" style={{color: '#00ff00', textTransform: 'uppercase', fontSize: '2rem', marginBottom: '20px'}}>WHAT ARE YOU</h2>
+      <canvas
+        ref={canvasRef}
+        onPointerDown={startDrawing}
+        onPointerUp={finishDrawing}
+        onPointerMove={draw}
+        onPointerLeave={finishDrawing}
+        onPointerCancel={finishDrawing}
+        style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.25)' }}
+      />
+      <button 
+        onClick={handleFinish}
+        className="neural-text"
+        style={{
+          marginTop: '25px',
+          background: 'rgba(0,0,0,0.4)',
+          color: '#00ff00',
+          border: '1px solid #00ff00',
+          padding: '10px 30px',
+          fontFamily: 'Megrim',
+          fontSize: '24px',
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+      >
+        INITIATE LIFE
+      </button>
     </div>
   );
 };
