@@ -928,6 +928,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const bloodParticlesRef = useRef([]);
   const isDeadRef = useRef(false);
   const pendingShotRef = useRef(false);
+  const bulletSpawnYRef = useRef(SHOOTER_WORLD_POS.y);
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -1055,15 +1056,21 @@ const GamePhase = ({ pointData, onGameOver }) => {
     });
 
     const cloud = new THREE.Points(geometry, material);
-    // [MODIFIED] Moved player further Left to avoid center crowding
-    // Original: -15. New: -35. 
-    // Since drawing width is approx +/- 30, this puts right edge around X=-5
-    cloud.position.x = -35; 
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    const desiredLeft = -45;
+    const desiredRight = -5;
+    let targetX = desiredLeft - box.min.x;
+    const projectedRight = box.max.x + targetX;
+    if (projectedRight > desiredRight) {
+      targetX += desiredRight - projectedRight;
+    }
+    cloud.position.x = targetX; 
     scene.add(cloud);
     entityRef.current = cloud;
 
-    geometry.computeBoundingBox();
-    const box = geometry.boundingBox;
+    bulletSpawnYRef.current = box.min.y + (box.max.y - box.min.y) * 0.5;
+    bulletSpawnYRef.current += cloud.position.y;
 
     // ----------------------------
     // EYE ATTACHMENT LOGIC (EDGE DETECTION)
@@ -1613,9 +1620,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
       for (let i = 0; i < BULLET_POINT_COUNT; i++) {
           const angle = Math.random() * Math.PI * 2;
-          const radius = 0.8 * Math.random();
-          const zOffset = (Math.random() - 0.5) * 0.6;
-          positions[i * 3] = Math.cos(angle) * radius;
+          const radius = 0.55 * Math.random();
+          const zOffset = (Math.random() - 0.5) * 0.4;
+          positions[i * 3] = Math.cos(angle) * radius * 0.8;
           positions[i * 3 + 1] = Math.sin(angle) * radius;
           positions[i * 3 + 2] = zOffset;
 
@@ -1629,7 +1636,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
       const material = new THREE.PointsMaterial({
-          size: 1.2,
+          size: 0.6,
           sizeAttenuation: true,
           transparent: true,
           opacity: 0.85,
@@ -1639,7 +1646,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       });
 
       const cloud = new THREE.Points(geometry, material);
-      cloud.position.set(SHOOTER_WORLD_POS.x, SHOOTER_WORLD_POS.y, SHOOTER_WORLD_POS.z);
+      cloud.position.set(SHOOTER_WORLD_POS.x, bulletSpawnYRef.current, SHOOTER_WORLD_POS.z);
       cloud.userData = { 
         pulseOffset: Math.random() * Math.PI * 2,
         baseY: SHOOTER_WORLD_POS.y
