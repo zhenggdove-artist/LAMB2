@@ -684,30 +684,36 @@ const DrawingPhase = ({ onFinish }) => {
     };
   }, []);
 
-  const startDrawing = (event) => {
+  const startDrawing = useCallback((event) => {
     if (event?.cancelable) event.preventDefault();
     const point = getCanvasPoint(event.nativeEvent);
     if (!point) return;
+    if (typeof event.pointerId === 'number') {
+      event.currentTarget?.setPointerCapture?.(event.pointerId);
+    }
     contextRef.current?.beginPath();
     contextRef.current?.moveTo(point.x, point.y);
     setIsDrawing(true);
-  };
+  }, [getCanvasPoint]);
 
-  const finishDrawing = (event) => {
+  const finishDrawing = useCallback((event) => {
     if (event?.cancelable) event.preventDefault();
+    if (typeof event?.pointerId === 'number' && event?.currentTarget?.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     if (!isDrawing) return;
     contextRef.current?.closePath();
     setIsDrawing(false);
-  };
+  }, [isDrawing]);
 
-  const draw = (event) => {
+  const draw = useCallback((event) => {
     if (!isDrawing) return;
     if (event?.cancelable) event.preventDefault();
     const point = getCanvasPoint(event.nativeEvent);
     if (!point) return;
     contextRef.current?.lineTo(point.x, point.y);
     contextRef.current?.stroke();
-  };
+  }, [getCanvasPoint, isDrawing]);
 
   const handleFinish = () => {
     const canvas = canvasRef.current;
@@ -766,14 +772,11 @@ const DrawingPhase = ({ onFinish }) => {
       <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
       <canvas
         ref={canvasRef}
-        onMouseDown={startDrawing}
-        onMouseUp={finishDrawing}
-        onMouseMove={draw}
-        onMouseLeave={finishDrawing}
-        onTouchStart={startDrawing}
-        onTouchMove={draw}
-        onTouchEnd={finishDrawing}
-        onTouchCancel={finishDrawing}
+        onPointerDown={startDrawing}
+        onPointerUp={finishDrawing}
+        onPointerMove={draw}
+        onPointerLeave={finishDrawing}
+        onPointerCancel={finishDrawing}
         style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: 'white', touchAction: 'none' }}
       />
       <button 
@@ -814,6 +817,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const bloodParticlesRef = useRef([]);
   const isDeadRef = useRef(false);
   const bulletTexturesRef = useRef([]);
+  const bulletMaterialParamsRef = useRef({ depthTest: false });
   const BULLET_FRAME_DURATION = 80; // ms per bullet frame
 
   // INDEPENDENT EYE CONTROLLERS
@@ -848,10 +852,19 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const textureLoader = new THREE.TextureLoader();
     bulletTexturesRef.current = ASSETS.BULLET_FRAMES.map((path) => {
       const texture = textureLoader.load(path);
-      texture.encoding = THREE.sRGBEncoding || THREE.LinearEncoding;
-      texture.needsUpdate = true;
+      if (texture) {
+        if (THREE.sRGBEncoding) texture.encoding = THREE.sRGBEncoding;
+        texture.flipY = false;
+        texture.needsUpdate = true;
+      }
       return texture;
-    });
+    }).filter(Boolean);
+    bulletMaterialParamsRef.current = {
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      color: 0xffffff
+    };
 
     // SCENE
     const scene = new THREE.Scene();
@@ -866,6 +879,13 @@ const GamePhase = ({ pointData, onGameOver }) => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     mountRef.current?.appendChild(renderer.domElement);
+
+    const disposeBullet = (sceneObj, bullet) => {
+      if (!bullet) return;
+      sceneObj.remove(bullet);
+      if (bullet.material?.dispose) bullet.material.dispose();
+      if (bullet.geometry?.dispose) bullet.geometry.dispose();
+    };
 
     // LIGHTS
     const ambientLight = new THREE.AmbientLight(0x222222);
@@ -1352,9 +1372,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
           // BULLET LOGIC
           if (time - lastBulletTimeRef.current > 2000) {
               lastBulletTimeRef.current = time;
-              const bullet = createBullet();
+              const bullet = createBullet(scene);
               if (bullet) {
-                  scene.add(bullet);
                   bulletsRef.current.push(bullet);
               }
           }
@@ -1370,15 +1389,17 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   }
                   if (time - data.lastFrameTime >= BULLET_FRAME_DURATION) {
                       data.frameIndex = ((data.frameIndex || 0) + 1) % textures.length;
-                      b.material.map = textures[data.frameIndex];
-                      b.material.needsUpdate = true;
+                      if (textures[data.frameIndex]) {
+                          b.material.map = textures[data.frameIndex];
+                          b.material.needsUpdate = true;
+                      }
                       data.lastFrameTime = time;
                   }
               }
 
               // Hit Detection (Player is at x = -35)
               if (b.position.x < -25 && b.position.x > -45 && Math.abs(b.position.y) < 10) {
-                  scene.remove(b);
+                  disposeBullet(scene, b);
                   bulletsRef.current.splice(i, 1);
                   hitIntensityRef.current = 1.0;
                   setHealth(prev => {
@@ -1391,7 +1412,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   continue;
               }
               if (b.position.x < -60) { // Removed when off screen Left
-                  scene.remove(b);
+                  disposeBullet(scene, b);
                   bulletsRef.current.splice(i, 1);
               }
           }
@@ -1407,32 +1428,36 @@ const GamePhase = ({ pointData, onGameOver }) => {
       window.removeEventListener('mousedown', onMouseClick);
       cancelAnimationFrame(animationFrameRef.current);
       if(mountRef.current) mountRef.current.innerHTML = '';
+      const cleanupScene = sceneRef.current;
+      bulletsRef.current.forEach((b) => {
+        cleanupScene?.remove?.(b);
+        if (b.material?.dispose) b.material.dispose();
+        if (b.geometry?.dispose) b.geometry.dispose();
+      });
       bulletsRef.current = [];
       horrorGrowthsRef.current = [];
       bloodParticlesRef.current = [];
-      bulletTexturesRef.current.forEach((tex) => tex.dispose && tex.dispose());
+      bulletTexturesRef.current.forEach((tex) => tex?.dispose && tex.dispose());
       bulletTexturesRef.current = [];
     };
   }, []);
 
-  const createBullet = useCallback(() => {
+  const createBullet = useCallback((scene) => {
       const THREE = window.THREE;
       if (!THREE || bulletTexturesRef.current.length === 0) return null;
 
-      const geometry = new THREE.PlaneGeometry(2, 1);
-      const material = new THREE.MeshBasicMaterial({ 
-          transparent: true,
-          depthWrite: false,
-          side: THREE.DoubleSide
+      const material = new THREE.SpriteMaterial({
+          map: bulletTexturesRef.current[0],
+          ...bulletMaterialParamsRef.current,
       });
-      material.map = bulletTexturesRef.current[0];
       material.needsUpdate = true;
 
-      const mesh = new THREE.Mesh(geometry, material);
-      // Spawn at Right Side (x = 25)
-      mesh.position.set(25, (Math.random() * 10) - 5, 0); 
-      mesh.userData = { frameIndex: 0, lastFrameTime: performance.now() };
-      return mesh;
+      const sprite = new THREE.Sprite(material);
+      sprite.scale.set(2.5, 2.5, 1);
+      sprite.position.set(25, (Math.random() * 10) - 5, 0);
+      sprite.userData = { frameIndex: 0, lastFrameTime: performance.now() };
+      scene.add(sprite);
+      return sprite;
   }, []);
 
   return (
