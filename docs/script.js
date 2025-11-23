@@ -929,6 +929,11 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const isDeadRef = useRef(false);
   const pendingShotRef = useRef(false);
   const bulletSpawnYRef = useRef(SHOOTER_WORLD_POS.y);
+  const layoutRef = useRef({
+    playerBounds: { left: -45, right: -5 },
+    bulletHeightRatio: 0.5,
+    isMobile: false
+  });
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -954,9 +959,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const THREE = window.THREE;
     if (!THREE) return;
 
-    const layoutBounds = isMobile ? { left: -42, right: -8 } : { left: -60, right: -20 };
-    const bulletHeightRatio = 0.5;
-
     // SCENE
     const scene = new THREE.Scene();
     // Deep Space/Void Background
@@ -969,10 +971,18 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     
-    const computeRendererViewport = () => ({
-      width: window.innerWidth,
-      height: window.innerHeight
-    });
+    const computeRendererViewport = () => {
+      const isMobile = isMobileViewport();
+      layoutRef.current = {
+        playerBounds: isMobile ? { left: -42, right: -8 } : { left: -60, right: -18 },
+        bulletHeightRatio: isMobile ? 0.5 : 0.48,
+        isMobile
+      };
+      return {
+        width: window.innerWidth,
+        height: window.innerHeight
+      };
+    };
     const applyRendererViewport = () => {
       const { width, height } = computeRendererViewport();
       renderer.setSize(width, height, false);
@@ -1041,8 +1051,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const cloud = new THREE.Points(geometry, material);
     geometry.computeBoundingBox();
     const box = geometry.boundingBox;
-    const desiredLeft = layoutBounds.left;
-    const desiredRight = layoutBounds.right;
+    const { playerBounds, bulletHeightRatio } = layoutRef.current;
+    const desiredLeft = playerBounds.left;
+    const desiredRight = playerBounds.right;
     let targetX = desiredLeft - box.min.x;
     const projectedRight = box.max.x + targetX;
     if (projectedRight > desiredRight) {
