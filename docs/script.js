@@ -711,7 +711,6 @@ const DrawingPhase = ({ onFinish }) => {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const contextRef = useRef(null);
-  const tentacleBackgroundRef = useRef(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -735,256 +734,6 @@ const DrawingPhase = ({ onFinish }) => {
       ctx.fillStyle = '#E1C4C4';
       ctx.fillRect(0, 0, 300, 300);
     }
-  }, []);
-
-  useEffect(() => {
-    const container = tentacleBackgroundRef.current;
-    if (!container) return;
-
-    let renderer = null;
-    let camera = null;
-    let scene = null;
-    let uniforms = null;
-    let animationFrame = 0;
-    let spawnInterval = 0;
-    let waitForThreeRAF = 0;
-    const spawnTimeouts = [];
-    const activeTentacles = [];
-    let resizeHandler = null;
-    let disposed = false;
-    let THREEInstance = null;
-
-    const getDimensions = () => {
-      const { clientWidth, clientHeight } = container;
-      return {
-        width: clientWidth || window.innerWidth,
-        height: clientHeight || window.innerHeight
-      };
-    };
-
-    const disposeTentacle = (tentacle) => {
-      if (!tentacle || !scene) return;
-      scene.remove(tentacle.mesh);
-      tentacle.mesh.geometry.dispose();
-      if (tentacle.mesh.material?.dispose) tentacle.mesh.material.dispose();
-    };
-
-    const initRenderer = () => {
-      const { width, height } = getDimensions();
-      camera = new THREEInstance.PerspectiveCamera(55, width / height, 0.1, 400);
-      camera.position.set(0, 0, 110);
-
-      renderer = new THREEInstance.WebGLRenderer({ alpha: true, antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.setSize(width, height);
-      renderer.domElement.style.position = 'absolute';
-      renderer.domElement.style.inset = '0';
-      renderer.domElement.style.pointerEvents = 'none';
-      container.appendChild(renderer.domElement);
-    };
-
-    const createBackgroundTentacle = () => {
-      if (!THREEInstance || !scene) return null;
-      const rootPos = new THREEInstance.Vector3(
-        (Math.random() - 0.5) * 70,
-        -35 + Math.random() * 10,
-        -10 + Math.random() * 20
-      );
-      const pathPoints = [];
-      const numSegments = 25;
-      const length = 30 + Math.random() * 18;
-      const phase = Math.random() * Math.PI * 2;
-      const sway = (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 4);
-
-      for (let i = 0; i < numSegments; i++) {
-        const t = i / (numSegments - 1);
-        const base = new THREEInstance.Vector3(0, t * length, 0);
-        base.x += Math.sin(t * Math.PI * 4 + phase) * (4 + t * 9) + sway * t;
-        base.y += Math.cos(t * Math.PI * 2 + phase * 0.5) * 1.5;
-        base.z += Math.sin(t * Math.PI * 3 + phase) * (2 + t * 4);
-        pathPoints.push(base);
-      }
-
-      const curve = new THREEInstance.CatmullRomCurve3(pathPoints);
-      const rootColor = new THREEInstance.Color().setHSL(0.93 + Math.random() * 0.04, 0.7, 0.75);
-      const tipColor = new THREEInstance.Color().setHSL(0.98 + Math.random() * 0.02, 0.85, 0.6);
-      const { points, sizes, colors } = generateRingedPoints(
-        THREEInstance,
-        curve,
-        TENTACLE_MAX_RINGS,
-        TENTACLE_POINTS_PER_RING,
-        0.75,
-        rootColor,
-        tipColor
-      );
-
-      const geometry = new THREEInstance.BufferGeometry();
-      const positionAttr = new THREEInstance.BufferAttribute(new Float32Array(points), 3);
-      const colorAttr = new THREEInstance.BufferAttribute(new Float32Array(colors), 3);
-      positionAttr.setUsage(THREEInstance.DynamicDrawUsage);
-      colorAttr.setUsage(THREEInstance.DynamicDrawUsage);
-      geometry.setAttribute('position', positionAttr);
-      geometry.setAttribute('size', new THREEInstance.BufferAttribute(new Float32Array(sizes), 1));
-      geometry.setAttribute('customColor', colorAttr);
-
-      const material = new THREEInstance.ShaderMaterial({
-        uniforms,
-        vertexShader,
-        fragmentShader,
-        blending: THREEInstance.AdditiveBlending,
-        depthTest: false,
-        transparent: true
-      });
-
-      const mesh = new THREEInstance.Points(geometry, material);
-      mesh.position.copy(rootPos);
-      mesh.scale.set(0.01, 0.01, 0.01);
-      scene.add(mesh);
-
-      return {
-        mesh,
-        curve,
-        restPoints: pathPoints.map((p) => p.clone()),
-        rootColor,
-        tipColor,
-        originalColors: new Float32Array(colors),
-        seed: Math.random() * 1000,
-        speed: 0.6 + Math.random() * 0.6,
-        spiralFactor: (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2.5),
-        targetScale: 0.5 + Math.random() * 0.6,
-        createdAt: performance.now(),
-        decay: false
-      };
-    };
-
-    const spawnTentacle = () => {
-      if (!scene || !THREEInstance) return;
-      const tentacle = createBackgroundTentacle();
-      if (!tentacle) return;
-      activeTentacles.push(tentacle);
-      if (activeTentacles.length > 12) {
-        const old = activeTentacles.shift();
-        disposeTentacle(old);
-      }
-    };
-
-    const updateTentacles = (seconds) => {
-      if (!THREEInstance) return;
-      const now = performance.now();
-      for (let i = activeTentacles.length - 1; i >= 0; i--) {
-        const t = activeTentacles[i];
-        const curvePoints = t.curve.points;
-        for (let j = 1; j < curvePoints.length; j++) {
-          const rest = t.restPoints[j];
-          const amp = (j / curvePoints.length) * 3.0;
-          const tt = seconds * t.speed + j * 0.25;
-          const spiralX = Math.sin(tt) * Math.cos(tt * 0.6) * t.spiralFactor;
-          const spiralY = Math.cos(tt) * Math.sin(tt * 0.5) * t.spiralFactor * 0.4;
-          curvePoints[j].x = rest.x + Math.sin(tt + t.seed) * amp + spiralX;
-          curvePoints[j].y = rest.y + Math.cos(tt * 0.8 + t.seed) * amp * 0.3 + spiralY;
-          curvePoints[j].z = rest.z + Math.sin(tt * 0.6 + t.seed) * amp * 0.6;
-        }
-
-        const { points } = generateRingedPoints(
-          THREEInstance,
-          t.curve,
-          TENTACLE_MAX_RINGS,
-          TENTACLE_POINTS_PER_RING,
-          0.75,
-          t.rootColor,
-          t.tipColor
-        );
-        const posAttr = t.mesh.geometry.attributes.position;
-        const colAttr = t.mesh.geometry.attributes.customColor;
-        for (let k = 0; k < points.length; k++) {
-          posAttr.array[k] = points[k];
-        }
-        posAttr.needsUpdate = true;
-
-        const brightness = Math.max(0.25, Math.min(1.2, t.mesh.scale.x * 1.8));
-        const baseColors = t.originalColors;
-        for (let c = 0; c < baseColors.length; c++) {
-          colAttr.array[c] = baseColors[c] * brightness;
-        }
-        colAttr.needsUpdate = true;
-
-        const age = (now - t.createdAt) / 1000;
-        if (!t.decay && age > 20) {
-          t.decay = true;
-          t.targetScale = 0.01;
-        }
-
-        t.mesh.scale.x += (t.targetScale - t.mesh.scale.x) * 0.05;
-        t.mesh.scale.y += (t.targetScale - t.mesh.scale.y) * 0.05;
-        t.mesh.scale.z += (t.targetScale - t.mesh.scale.z) * 0.05;
-
-        if (t.decay && t.mesh.scale.x <= 0.02) {
-          disposeTentacle(t);
-          activeTentacles.splice(i, 1);
-        }
-      }
-    };
-
-    const start = () => {
-      if (disposed) return;
-      THREEInstance = window.THREE;
-      if (!THREEInstance) {
-        waitForThreeRAF = requestAnimationFrame(start);
-        return;
-      }
-
-      scene = new THREEInstance.Scene();
-      uniforms = {
-        uTime: { value: 0 },
-        uHeal: { value: 0 },
-        uHit: { value: 0 }
-      };
-
-      initRenderer();
-      for (let i = 0; i < 6; i++) {
-        const timeoutId = window.setTimeout(spawnTentacle, i * 350);
-        spawnTimeouts.push(timeoutId);
-      }
-      spawnInterval = window.setInterval(spawnTentacle, 3500);
-
-      const animate = (time) => {
-        uniforms.uTime.value = time * 0.001;
-        updateTentacles(uniforms.uTime.value);
-        if (renderer && scene && camera) {
-          renderer.render(scene, camera);
-        }
-        animationFrame = requestAnimationFrame(animate);
-      };
-      animationFrame = requestAnimationFrame(animate);
-
-      resizeHandler = () => {
-        if (!renderer || !camera) return;
-        const { width, height } = getDimensions();
-        renderer.setSize(width, height);
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-      };
-      window.addEventListener('resize', resizeHandler);
-    };
-
-    start();
-
-    return () => {
-      disposed = true;
-      if (waitForThreeRAF) cancelAnimationFrame(waitForThreeRAF);
-      spawnTimeouts.forEach(clearTimeout);
-      if (spawnInterval) clearInterval(spawnInterval);
-      if (resizeHandler) window.removeEventListener('resize', resizeHandler);
-      if (animationFrame) cancelAnimationFrame(animationFrame);
-      activeTentacles.forEach(disposeTentacle);
-      activeTentacles.length = 0;
-      if (renderer) {
-        renderer.dispose();
-        if (renderer.domElement && container.contains(renderer.domElement)) {
-          container.removeChild(renderer.domElement);
-        }
-      }
-    };
   }, []);
 
   const getCanvasPoint = useCallback((nativeEvent) => {
@@ -1104,13 +853,9 @@ const DrawingPhase = ({ onFinish }) => {
       position: 'relative',
       overflow: 'hidden'
     }}>
-      <div
-        ref={tentacleBackgroundRef}
-        style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}
-      />
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '100vw' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '100vw' }}>
         <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
-        <div style={{ position: 'relative', padding: '18px', borderRadius: '18px', background: 'rgba(5,5,5,0.95)', boxShadow: '0 0 40px rgba(255, 80, 140, 0.2)' }}>
+        <div style={{ padding: '18px', borderRadius: '18px', background: 'rgba(5,5,5,0.95)', boxShadow: '0 0 40px rgba(255, 80, 140, 0.2)' }}>
           <canvas
             ref={canvasRef}
             onPointerDown={startDrawing}
@@ -1118,10 +863,10 @@ const DrawingPhase = ({ onFinish }) => {
             onPointerMove={draw}
             onPointerLeave={finishDrawing}
             onPointerCancel={finishDrawing}
-            style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.25)', position: 'relative', zIndex: 2}}
+            style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.25)' }}
           />
         </div>
-        <div style={{ position: 'relative', marginTop: '30px', padding: '12px 24px', borderRadius: '12px', background: 'rgba(5,5,5,0.95)', boxShadow: '0 0 30px rgba(255,80,160,0.2)' }}>
+        <div style={{ marginTop: '30px', padding: '12px 24px', borderRadius: '12px', background: 'rgba(5,5,5,0.95)', boxShadow: '0 0 30px rgba(255,80,160,0.2)' }}>
           <button 
             onClick={handleFinish}
             className="neural-text"
@@ -1902,7 +1647,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', minHeight: '100vh' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
       {/* 3D Container */}
       <div
         ref={mountRef}
