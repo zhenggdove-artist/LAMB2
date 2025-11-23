@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // ==========================================
@@ -13,11 +13,13 @@ const ASSETS = {
 const MOBILE_BREAKPOINT = 768;
 const TARGET_ASPECT_RATIO = 16 / 9;
 const BULLET_POINT_COUNT = 80;
-const SHOOTER_WORLD_POS = { x: 25, y: 0, z: 0 };
+const SHOOTER_WORLD_POS = { x: 25, y: -12, z: 0 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
 const TENTACLE_MAX_RINGS = 60;
 const TENTACLE_POINTS_PER_RING = 30;
+const DRAW_TENTACLE_COLORS = ['#ff67d4', '#ffa260', '#ffe66c', '#7ae8ff', '#ad83ff', '#ff4f69'];
+const DRAW_TENTACLE_ORIGINS = ['top', 'bottom', 'left', 'right'];
 
 const useIsMobileViewport = () => {
   const getMatches = () => {
@@ -711,6 +713,18 @@ const DrawingPhase = ({ onFinish }) => {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const contextRef = useRef(null);
+  const tentacleConfigs = useMemo(() => {
+    return Array.from({ length: 30 }, () => ({
+      origin: DRAW_TENTACLE_ORIGINS[Math.floor(Math.random() * DRAW_TENTACLE_ORIGINS.length)],
+      spread: Math.random() * 100,
+      size: 35 + Math.random() * 55,
+      thickness: 1 + Math.random() * 3,
+      color: DRAW_TENTACLE_COLORS[Math.floor(Math.random() * DRAW_TENTACLE_COLORS.length)],
+      delay: Math.random() * 4,
+      duration: 5 + Math.random() * 5,
+      bend: (Math.random() - 0.5) * 40
+    }));
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -849,41 +863,115 @@ const DrawingPhase = ({ onFinish }) => {
       alignItems: 'center', 
       justifyContent: 'center', 
       height: '100vh',
-      background: 'radial-gradient(circle at top, rgba(30,30,30,0.95), #050505)',
+      background: 'radial-gradient(circle at top, rgba(20,20,20,0.95), #050505)',
       position: 'relative',
       overflow: 'hidden'
     }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '100vw' }}>
-        <h2 className="neural-text" style={{color: '#00ff00', marginBottom: '20px', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
-        <div style={{ padding: '18px', borderRadius: '18px', background: 'rgba(5,5,5,0.95)', boxShadow: '0 0 40px rgba(255, 80, 140, 0.2)' }}>
-          <canvas
-            ref={canvasRef}
-            onPointerDown={startDrawing}
-            onPointerUp={finishDrawing}
-            onPointerMove={draw}
-            onPointerLeave={finishDrawing}
-            onPointerCancel={finishDrawing}
-            style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.25)' }}
-          />
-        </div>
-        <div style={{ marginTop: '30px', padding: '12px 24px', borderRadius: '12px', background: 'rgba(5,5,5,0.95)', boxShadow: '0 0 30px rgba(255,80,160,0.2)' }}>
-          <button 
-            onClick={handleFinish}
-            className="neural-text"
-            style={{
-              background: 'rgba(0,0,0,0.6)',
-              color: '#00ff00',
-              border: '1px solid #00ff00',
-              padding: '10px 30px',
-              fontFamily: 'Megrim',
-              fontSize: '24px',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
-          >
-            INITIATE LIFE
-          </button>
-        </div>
+      <style>{`
+        @keyframes drawTentacleGrow {
+          0% { transform: scale(0.1) rotate(var(--start-rot, 0deg)); opacity: 0; }
+          60% { opacity: 0.85; }
+          100% { transform: scale(1) rotate(var(--end-rot, 0deg)); opacity: 0.95; }
+        }
+      `}</style>
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
+        {tentacleConfigs.map((cfg, idx) => {
+          const common = {
+            position: 'absolute',
+            background: `linear-gradient(${cfg.origin === 'left' || cfg.origin === 'right' ? 90 : 180}deg, ${cfg.color}, rgba(0,0,0,0))`,
+            borderRadius: '50px',
+            filter: 'drop-shadow(0 0 12px rgba(0,0,0,0.45))',
+            animation: `drawTentacleGrow ${cfg.duration}s ease-in-out ${cfg.delay}s infinite alternate`,
+            '--start-rot': `${cfg.bend}deg`,
+            '--end-rot': `${-cfg.bend * 0.4}deg`
+          };
+          if (cfg.origin === 'top') {
+            return (
+              <div
+                key={`tentacle-${idx}`}
+                style={{
+                  ...common,
+                  top: '-20vh',
+                  left: `${cfg.spread}%`,
+                  width: `${cfg.thickness}px`,
+                  height: `${cfg.size}vh`,
+                  transformOrigin: 'top center'
+                }}
+              />
+            );
+          }
+          if (cfg.origin === 'bottom') {
+            return (
+              <div
+                key={`tentacle-${idx}`}
+                style={{
+                  ...common,
+                  bottom: '-20vh',
+                  left: `${cfg.spread}%`,
+                  width: `${cfg.thickness}px`,
+                  height: `${cfg.size}vh`,
+                  transformOrigin: 'bottom center'
+                }}
+              />
+            );
+          }
+          if (cfg.origin === 'left') {
+            return (
+              <div
+                key={`tentacle-${idx}`}
+                style={{
+                  ...common,
+                  left: '-12vw',
+                  top: `${cfg.spread}%`,
+                  width: `${cfg.size}vw`,
+                  height: `${cfg.thickness}px`,
+                  transformOrigin: 'center left'
+                }}
+              />
+            );
+          }
+          return (
+            <div
+              key={`tentacle-${idx}`}
+              style={{
+                ...common,
+                right: '-12vw',
+                top: `${cfg.spread}%`,
+                width: `${cfg.size}vw`,
+                height: `${cfg.thickness}px`,
+                transformOrigin: 'center right'
+              }}
+            />
+          );
+        })}
+      </div>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '100vw', gap: '20px' }}>
+        <h2 className="neural-text" style={{color: '#00ff00', textTransform: 'uppercase', fontSize: '2rem'}}>WHAT ARE YOU</h2>
+        <canvas
+          ref={canvasRef}
+          onPointerDown={startDrawing}
+          onPointerUp={finishDrawing}
+          onPointerMove={draw}
+          onPointerLeave={finishDrawing}
+          onPointerCancel={finishDrawing}
+          style={{ border: '2px solid #00ff00', cursor: 'crosshair', background: '#E1C4C4', touchAction: 'none', boxShadow: '0 0 25px rgba(0,255,0,0.25)' }}
+        />
+        <button 
+          onClick={handleFinish}
+          className="neural-text"
+          style={{
+            background: 'rgba(0,0,0,0.4)',
+            color: '#00ff00',
+            border: '1px solid #00ff00',
+            padding: '10px 30px',
+            fontFamily: 'Megrim',
+            fontSize: '24px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          INITIATE LIFE
+        </button>
       </div>
     </div>
   );
@@ -1121,6 +1209,18 @@ const GamePhase = ({ pointData, onGameOver }) => {
         const mesh = new THREE.Points(eyeGeo, eyeMat);
         mesh.position.set(px, py, pz + 1.0); 
         mesh.scale.set(eyeScale, eyeScale, eyeScale);
+        if (type === 'front') {
+            const pupilMaterial = new THREE.SpriteMaterial({
+                color: 0x050505,
+                opacity: 0.95,
+                transparent: true,
+                depthTest: false
+            });
+            const pupil = new THREE.Sprite(pupilMaterial);
+            pupil.scale.set(eyeScale * 0.8, eyeScale * 0.8, 1);
+            pupil.position.set(0, 0, 0.3);
+            mesh.add(pupil);
+        }
         cloud.add(mesh);
 
         // Register controller
