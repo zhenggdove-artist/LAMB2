@@ -11,6 +11,14 @@ const ASSETS = {
 };
 
 const MOBILE_BREAKPOINT = 768;
+const PLAYER_BASE_SCALE = 0.33; // 將玩家雲團預設縮小為原本約 1/3
+const PLAYER_SCREEN_ANCHOR_Y = 0.5; // 以畫面中線當作玩家水平定位的換算基準
+const BULLET_SCALE = 0.33; // 將子彈雲團縮小為原本約 1/3
+const HEALTHBAR_LAYOUT = {
+  mobile: { left: 20, top: 20, widthVw: 50, height: 28, canvasWidth: 800, canvasHeight: 60 },
+  desktop: { left: 30, top: 30, widthPx: 600, height: 40, canvasWidth: 1200, canvasHeight: 80 },
+};
+const SHOOTER_NPC_SIZE = { mobile: 120, desktop: 150 };
 const TARGET_ASPECT_RATIO = 16 / 9;
 const BULLET_POINT_COUNT = 80;
 const SHOOTER_WORLD_POS = { x: 25, y: 0, z: 0 };
@@ -677,12 +685,13 @@ const PointCloudHealthBar = ({ health, lastHit, isMobile = false }) => {
         return () => cancelAnimationFrame(reqRef.current);
     }, []);
 
-    const containerWidth = isMobile ? '50vw' : '600px';
-    const containerHeight = isMobile ? '28px' : '40px';
-    const containerTop = isMobile ? '20px' : '30px';
-    const containerLeft = isMobile ? '20px' : '30px';
-    const canvasWidth = isMobile ? 800 : 1200;
-    const canvasHeight = isMobile ? 60 : 80;
+    const barConfig = isMobile ? HEALTHBAR_LAYOUT.mobile : HEALTHBAR_LAYOUT.desktop;
+    const containerWidth = isMobile ? `${barConfig.widthVw}vw` : `${barConfig.widthPx}px`;
+    const containerHeight = `${barConfig.height}px`;
+    const containerTop = `${barConfig.top}px`;
+    const containerLeft = `${barConfig.left}px`;
+    const canvasWidth = barConfig.canvasWidth;
+    const canvasHeight = barConfig.canvasHeight;
 
     return (
         <div style={{
@@ -895,9 +904,11 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const entityRef = useRef(null); 
   const horrorGrowthsRef = useRef([]); 
   const bulletsRef = useRef([]);
+  const shooterOriginRef = useRef({ ...SHOOTER_WORLD_POS });
   const bloodParticlesRef = useRef([]);
   const isDeadRef = useRef(false);
   const pendingShotRef = useRef(false);
+  const playerHalfWidthRef = useRef(15);
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -966,13 +977,6 @@ const GamePhase = ({ pointData, onGameOver }) => {
     };
     applyRendererViewport();
     mountRef.current?.appendChild(renderer.domElement);
-    
-    const handleResize = () => {
-      renderer.setPixelRatio(window.devicePixelRatio);
-      applyRendererViewport();
-    };
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleResize);
 
     const disposeBullet = (sceneObj, bullet) => {
       if (!bullet) return;
@@ -1015,15 +1019,69 @@ const GamePhase = ({ pointData, onGameOver }) => {
     });
 
     const cloud = new THREE.Points(geometry, material);
-    // [MODIFIED] Moved player further Left to avoid center crowding
-    // Original: -15. New: -35. 
-    // Since drawing width is approx +/- 30, this puts right edge around X=-5
-    cloud.position.x = -35; 
+    cloud.position.x = 0; 
     scene.add(cloud);
     entityRef.current = cloud;
 
     geometry.computeBoundingBox();
     const box = geometry.boundingBox;
+    const playerWidth = box.max.x - box.min.x;
+
+    const screenToWorld = (px, py) => {
+      const { width, height } = computeRendererViewport();
+      const ndc = new THREE.Vector3(
+        (px / width) * 2 - 1,
+        -(py / height) * 2 + 1,
+        0.5
+      );
+      ndc.unproject(camera);
+      const dir = ndc.sub(camera.position).normalize();
+      const distance = -camera.position.z / dir.z;
+      return camera.position.clone().add(dir.multiplyScalar(distance));
+    };
+
+    const updateAnchors = () => {
+      const { width, height } = computeRendererViewport();
+      const barCfg = isMobile ? HEALTHBAR_LAYOUT.mobile : HEALTHBAR_LAYOUT.desktop;
+      const barWidthPx = isMobile ? width * (barCfg.widthVw / 100) : barCfg.widthPx;
+      const leftPx = barCfg.left;
+      const rightPx = leftPx + barWidthPx;
+      const screenY = height * PLAYER_SCREEN_ANCHOR_Y;
+
+      const leftWorld = screenToWorld(leftPx, screenY).x;
+      const rightWorld = screenToWorld(rightPx, screenY).x;
+      const availableHalfWidth = Math.max(0.1, (rightWorld - leftWorld) / 2);
+      const naturalHalfWidth = (playerWidth * PLAYER_BASE_SCALE) / 2;
+      const baseScale = Math.min(PLAYER_BASE_SCALE, availableHalfWidth / naturalHalfWidth);
+      const centerX = (leftWorld + rightWorld) / 2;
+
+      if (entityRef.current) {
+        entityRef.current.position.x = centerX;
+        entityRef.current.userData.baseScale = baseScale;
+        entityRef.current.userData.centerX = centerX;
+        entityRef.current.userData.maxHalfWidth = availableHalfWidth;
+        const halfWidth = (playerWidth * baseScale) / 2;
+        entityRef.current.userData.hitBoxHalfWidth = halfWidth;
+        playerHalfWidthRef.current = halfWidth;
+      }
+
+      const npcSizePx = isMobile ? SHOOTER_NPC_SIZE.mobile : SHOOTER_NPC_SIZE.desktop;
+      const rightMarginPx = width * (isMobile ? 0.02 : 0.05);
+      const shooterScreenX = width - rightMarginPx - npcSizePx;
+      const shooterScreenY = height * 0.5 + npcSizePx * (0.5 - NPC_HEAD_ANCHOR_RATIO);
+      const shooterWorld = screenToWorld(shooterScreenX, shooterScreenY);
+      shooterOriginRef.current = { x: shooterWorld.x, y: shooterWorld.y, z: shooterWorld.z };
+    };
+
+    const handleResize = () => {
+      renderer.setPixelRatio(window.devicePixelRatio);
+      applyRendererViewport();
+      updateAnchors();
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+
+    updateAnchors();
 
     // ----------------------------
     // EYE ATTACHMENT LOGIC (EDGE DETECTION)
@@ -1462,10 +1520,22 @@ const GamePhase = ({ pointData, onGameOver }) => {
              // (Slow inhale, pause, fast exhale pattern simulation via interference)
              const breath = (Math.sin(seconds * 2.0) + Math.sin(seconds * 3.14) * 0.5) * 0.02;
              
-             const baseScale = 1.0 + Math.max(0, healthRef.current - 100) / 400.0;
-             const finalScale = baseScale + breath;
+             const baseScaleRef = entityRef.current.userData?.baseScale ?? PLAYER_BASE_SCALE;
+             const maxHalfWidth = entityRef.current.userData?.maxHalfWidth;
+             const healthScale = 1.0 + Math.max(0, healthRef.current - 100) / 400.0;
+             const maxScaleFromBounds = maxHalfWidth ? (maxHalfWidth * 2) / playerWidth : null;
+             const intendedScale = baseScaleRef * healthScale;
+             const clampedScale = maxScaleFromBounds ? Math.min(intendedScale, maxScaleFromBounds) : intendedScale;
+             const breathedScale = clampedScale + breath * baseScaleRef;
+             const finalScale = maxScaleFromBounds ? Math.min(breathedScale, maxScaleFromBounds) : breathedScale;
              
              entityRef.current.scale.set(finalScale, finalScale, finalScale);
+             const liveHalfWidth = (playerWidth * finalScale) / 2;
+             entityRef.current.userData.hitBoxHalfWidth = liveHalfWidth;
+             playerHalfWidthRef.current = liveHalfWidth;
+             if (entityRef.current.userData?.centerX !== undefined) {
+                 entityRef.current.position.x = entityRef.current.userData.centerX;
+             }
           }
 
           // BULLET LOGIC
@@ -1498,8 +1568,15 @@ const GamePhase = ({ pointData, onGameOver }) => {
               b.rotation.z += 0.08;
               b.position.y = data.baseY + Math.sin(pulse * 2.0) * 1.2;
 
-              // Hit Detection (Player is at x = -35)
-              if (b.position.x < -25 && b.position.x > -45 && Math.abs(b.position.y) < 10) {
+              const playerCenterX = entityRef.current?.userData?.centerX ?? -35;
+              const hitHalfWidth = entityRef.current?.userData?.hitBoxHalfWidth ?? playerHalfWidthRef.current ?? 12;
+
+              // Hit detection aligned to the scaled player width
+              if (
+                  b.position.x < playerCenterX + hitHalfWidth &&
+                  b.position.x > playerCenterX - hitHalfWidth &&
+                  Math.abs(b.position.y) < 10
+              ) {
                   disposeBullet(scene, b);
                   bulletsRef.current.splice(i, 1);
                   hitIntensityRef.current = 1.0;
@@ -1512,7 +1589,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   setLastHitTime(Date.now());
                   continue;
               }
-              if (b.position.x < -60) { // Removed when off screen Left
+              const cleanupX = Math.min(playerCenterX - (hitHalfWidth + 20), -60);
+              if (b.position.x < cleanupX) { // Removed when far past the player
                   disposeBullet(scene, b);
                   bulletsRef.current.splice(i, 1);
               }
@@ -1558,8 +1636,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
       for (let i = 0; i < BULLET_POINT_COUNT; i++) {
           const angle = Math.random() * Math.PI * 2;
-          const radius = 0.8 * Math.random();
-          const zOffset = (Math.random() - 0.5) * 0.6;
+          const radius = 0.8 * BULLET_SCALE * Math.random();
+          const zOffset = (Math.random() - 0.5) * 0.6 * BULLET_SCALE;
           positions[i * 3] = Math.cos(angle) * radius;
           positions[i * 3 + 1] = Math.sin(angle) * radius;
           positions[i * 3 + 2] = zOffset;
@@ -1574,7 +1652,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
       const material = new THREE.PointsMaterial({
-          size: 1.2,
+          size: 1.2 * BULLET_SCALE,
           sizeAttenuation: true,
           transparent: true,
           opacity: 0.85,
@@ -1584,10 +1662,11 @@ const GamePhase = ({ pointData, onGameOver }) => {
       });
 
       const cloud = new THREE.Points(geometry, material);
-      cloud.position.set(SHOOTER_WORLD_POS.x, SHOOTER_WORLD_POS.y, SHOOTER_WORLD_POS.z);
+      const origin = shooterOriginRef.current || SHOOTER_WORLD_POS;
+      cloud.position.set(origin.x, origin.y, origin.z);
       cloud.userData = { 
         pulseOffset: Math.random() * Math.PI * 2,
-        baseY: SHOOTER_WORLD_POS.y
+        baseY: origin.y
       };
       scene.add(cloud);
       return cloud;
@@ -1615,7 +1694,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const symbolFontSize = isMobile ? '18px' : '24px';
   const overgrowthFontSize = isMobile ? '10px' : '14px';
 
-  const npcSize = isMobile ? 120 : 150;
+  const npcSize = isMobile ? SHOOTER_NPC_SIZE.mobile : SHOOTER_NPC_SIZE.desktop;
   const npcStyle = {
     position: 'absolute',
     right: isMobile ? '2%' : '5%',
