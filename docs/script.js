@@ -33,10 +33,10 @@ const EYE_PUPIL_THRESHOLD = 0.45; // 半徑內視為瞳孔（原本 0.35）
 const EYE_PUPIL_SIZE = 0.06; // 瞳孔點大小（原本 0.04）
 const EYE_IRIS_POINTS_SIDE = 600; // 側視瞳孔/虹膜點數（原本 400）
 const EYE_IRIS_POINTS_FRONT = 1000; // 正視瞳孔/虹膜點數（原本 400）
-const TENTACLE_DENSITY = { rings: 200, pointsPerRing: 80 }; // 觸手點環數與每環點數
+const TENTACLE_DENSITY = { rings: 150, pointsPerRing: 50 }; // 觸手點環數與每環點數
 // 觸手控制參數
 const TENTACLE_SETTINGS = {
-  perBatch: 3, // 一批生成幾根
+  perBatch: 5, // 一批生成幾根
   growthPerClick: 0.3, // 每次點擊增加的長度倍率
   baseLength: 20, // 觸手基礎長度
   lengthJitter: 10, // 觸手長度隨機附加
@@ -1806,10 +1806,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
 // ==========================================
 const GameOverPhase = () => {
     const poem = [
-        "I am the lamb derived from You,",
-        "I am the flesh and blood separated from You,",
-        "This is not our fault,",
-        "This is not our fault."
+        "WITH JUST A STICK AND A BIT OF ICE CREAM,",
+        "THEY TRANSFORMED ME INTO A DINOSAUR.",
+        "HOW ABOUT YOU?"
     ];
     const [lineIndex, setLineIndex] = useState(-1); 
     const [text, setText] = useState("");
