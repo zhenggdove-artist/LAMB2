@@ -25,6 +25,7 @@ const SHOOTER_BULLET_CONFIG = {
   desktop: { origin: { x: 30, y: 5, z: 0 }, radius: 0.8, size: 1.2 },
   mobile: { origin: { x: 10, y: -2, z: 0 }, radius: 0.2, size: 0.6 },
 };
+const BULLET_SPEED = 0.6; // 子彈朝玩家移動的速度
 // 眼睛調整參數
 const EYE_SCALE = 1.8; // 整顆眼睛放大倍率（原本 1.5）
 const EYE_PUPIL_COLOR = 0x66ccff; // 水藍色
@@ -32,6 +33,15 @@ const EYE_PUPIL_THRESHOLD = 0.45; // 半徑內視為瞳孔（原本 0.35）
 const EYE_PUPIL_SIZE = 0.06; // 瞳孔點大小（原本 0.04）
 const EYE_IRIS_POINTS_SIDE = 600; // 側視瞳孔/虹膜點數（原本 400）
 const EYE_IRIS_POINTS_FRONT = 1000; // 正視瞳孔/虹膜點數（原本 400）
+// 觸手控制參數
+const TENTACLE_SETTINGS = {
+  perBatch: 5, // 一批生成幾根
+  growthPerClick: 0.1, // 每次點擊增加的長度倍率
+  baseLength: 25, // 觸手基礎長度
+  lengthJitter: 10, // 觸手長度隨機附加
+  towardCameraBias: 0.6, // 越大越朝鏡頭/玩家（+Z）方向
+  followScaleStrength: 0.6, // 觸手越靠近鏡頭越放大的強度
+};
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
 const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
 
@@ -1164,7 +1174,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
 
         // 1. Check if we need to start a completely new batch
         // A batch is "complete" if it has 5 tentacles AND they are fully grown
-        if (batch.meshes.length >= 5 && batch.targetScale >= 1.0) {
+        if (batch.meshes.length >= TENTACLE_SETTINGS.perBatch && batch.targetScale >= 1.0) {
              // Reset for next cluster
              batch.meshes = [];
              batch.targetScale = 0.1;
@@ -1178,11 +1188,11 @@ const GamePhase = ({ pointData, onGameOver }) => {
         }
 
         // 3. Logic: If less than 5 roots, spawn a new one
-        if (batch.meshes.length < 5) {
+        if (batch.meshes.length < TENTACLE_SETTINGS.perBatch) {
              createSingleTentacle(batch.centerIndex, batch.targetScale);
         } else {
              // 4. If we have 5 roots, GROW them
-             batch.targetScale += 0.1; // Grow by 10% per click
+             batch.targetScale += TENTACLE_SETTINGS.growthPerClick; // Grow by config per click
              if (batch.targetScale > 1.0) batch.targetScale = 1.0;
         }
     };
@@ -1214,11 +1224,11 @@ const GamePhase = ({ pointData, onGameOver }) => {
         // 2. Control Points
         const pathPoints = [];
         const numSegments = 25;
-        const length = 25 + Math.random() * 10; 
+        const length = TENTACLE_SETTINGS.baseLength + Math.random() * TENTACLE_SETTINGS.lengthJitter; 
         const dir = new THREE.Vector3(
             (Math.random()-0.5) * 2, 
             (Math.random()-0.5) * 2, 
-            (Math.random()-0.5)
+            Math.random() * TENTACLE_SETTINGS.towardCameraBias + 0.2 // 偏向鏡頭（+Z）
         ).normalize();
 
         for(let i=0; i<numSegments; i++) {
@@ -1420,11 +1430,16 @@ const GamePhase = ({ pointData, onGameOver }) => {
                   
                   // 1. Smooth Growth (Tween scale)
                   // If this mesh is part of current batch, interpolate towards targetScale
+                  let baseScale = mesh.scale.x;
                   if (tentacleBatchRef.current.meshes.includes(mesh)) {
-                      mesh.scale.x += (targetScaleGlobal - mesh.scale.x) * 0.1;
-                      mesh.scale.y += (targetScaleGlobal - mesh.scale.y) * 0.1;
-                      mesh.scale.z += (targetScaleGlobal - mesh.scale.z) * 0.1;
+                      baseScale = baseScale + (targetScaleGlobal - baseScale) * 0.1;
                   }
+                  // 1b. 越靠近鏡頭越放大，遠離鏡頭變小（非累積）
+                  const worldPos = mesh.getWorldPosition(new THREE.Vector3());
+                  const distToCam = worldPos.distanceTo(camera.position);
+                  const followFactor = 1 + TENTACLE_SETTINGS.followScaleStrength * Math.max(0, (60 - distToCam) / 60);
+                  const finalScale = baseScale * followFactor;
+                  mesh.scale.set(finalScale, finalScale, finalScale);
 
                   // 2. Animate Control Points (Writhing)
                   for(let i=0; i<curve.points.length; i++) {
@@ -1504,17 +1519,16 @@ const GamePhase = ({ pointData, onGameOver }) => {
           }
 
           // BULLET LOGIC
-      if (pendingShotRef.current) {
-          pendingShotRef.current = false;
-          const bullet = createBullet(scene);
-          if (bullet) {
-              bulletsRef.current.push(bullet);
+          if (pendingShotRef.current) {
+              pendingShotRef.current = false;
+              const bullet = createBullet(scene);
+              if (bullet) {
+                  bulletsRef.current.push(bullet);
+              }
           }
-      }
-      const tmpVec = new THREE.Vector3();
-      for (let i = bulletsRef.current.length - 1; i >= 0; i--) {
-          const b = bulletsRef.current[i];
-          b.position.x -= 0.5; // SWAPPED: Moves Right to Left
+          const tmpVec = new THREE.Vector3();
+          for (let i = bulletsRef.current.length - 1; i >= 0; i--) {
+              const b = bulletsRef.current[i];
               const data = b.userData || (b.userData = {});
               if (data.pulseOffset === undefined) {
                   data.pulseOffset = Math.random() * Math.PI * 2;
@@ -1533,6 +1547,13 @@ const GamePhase = ({ pointData, onGameOver }) => {
               b.rotation.z += 0.08;
               // 固定在生成時的 Y，不再上下飄
               b.position.y = data.baseY;
+
+              // 依預先計算的方向向玩家移動
+              if (data.dir) {
+                  b.position.add(data.dir);
+              } else {
+                  b.position.x -= BULLET_SPEED;
+              }
 
               // Hit Detection (依玩家配置位置計算)
               const playerCenterX = playerConf.position.x;
@@ -1647,10 +1668,26 @@ const GamePhase = ({ pointData, onGameOver }) => {
       });
 
       const cloud = new THREE.Points(geometry, material);
-      cloud.position.set(bulletConf.origin.x, bulletConf.origin.y, bulletConf.origin.z);
+      const originVec = new THREE.Vector3(bulletConf.origin.x, bulletConf.origin.y, bulletConf.origin.z);
+      cloud.position.copy(originVec);
+      // 讓子彈朝玩家點雲飛行
+      let dir = new THREE.Vector3(-1, 0, 0).multiplyScalar(BULLET_SPEED);
+      if (entityRef.current && collisionPointsRef.current.length) {
+        const samples = collisionPointsRef.current;
+        const idx = Math.floor(Math.random() * samples.length);
+        const targetLocal = samples[idx].clone();
+        const targetWorld = targetLocal.applyMatrix4(entityRef.current.matrixWorld);
+        dir = targetWorld.sub(originVec);
+        if (dir.lengthSq() > 0.0001) {
+          dir.normalize().multiplyScalar(BULLET_SPEED);
+        } else {
+          dir.set(-BULLET_SPEED, 0, 0);
+        }
+      }
       cloud.userData = { 
         pulseOffset: Math.random() * Math.PI * 2,
-        baseY: bulletConf.origin.y
+        baseY: bulletConf.origin.y,
+        dir
       };
       scene.add(cloud);
       return cloud;
