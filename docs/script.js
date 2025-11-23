@@ -969,21 +969,39 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const isMobileViewport = () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
     const computeRendererViewport = () => {
       const isMobile = isMobileViewport();
-      if (!isMobile) {
-        return { width: window.innerWidth, height: window.innerHeight, isMobile };
-      }
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
-      let width = viewportWidth;
-      let height = width * (9 / 16);
-      if (height > viewportHeight) {
-        height = viewportHeight;
-        width = height * TARGET_ASPECT_RATIO;
+      if (isMobile) {
+        let height = viewportHeight;
+        let width = height * (9 / 16);
+        if (width > viewportWidth) {
+          width = viewportWidth;
+          height = width * (16 / 9);
+        }
+        return {
+          width,
+          height,
+          offsetX: (viewportWidth - width) / 2,
+          offsetY: (viewportHeight - height) / 2,
+          isMobile
+        };
       }
-      return { width, height, isMobile };
+      let height = viewportHeight;
+      let width = height * (3 / 4);
+      if (width > viewportWidth) {
+        width = viewportWidth;
+        height = width * (4 / 3);
+      }
+      return {
+        width,
+        height,
+        offsetX: (viewportWidth - width) / 2,
+        offsetY: (viewportHeight - height) / 2,
+        isMobile
+      };
     };
     const applyRendererViewport = () => {
-      const { width, height, isMobile } = computeRendererViewport();
+      const { width, height, offsetX, offsetY } = computeRendererViewport();
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
@@ -993,17 +1011,10 @@ const GamePhase = ({ pointData, onGameOver }) => {
       canvas.style.maxWidth = '100%';
       canvas.style.maxHeight = '100%';
       canvas.style.display = 'block';
-      if (isMobile) {
-        canvas.style.position = 'absolute';
-        canvas.style.top = '50%';
-        canvas.style.left = '50%';
-        canvas.style.transform = 'translate(-50%, -50%)';
-      } else {
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.transform = 'none';
-      }
+      canvas.style.position = 'absolute';
+      canvas.style.left = `${offsetX}px`;
+      canvas.style.top = `${offsetY}px`;
+      canvas.style.transform = 'none';
     };
     applyRendererViewport();
     mountRef.current?.appendChild(renderer.domElement);
@@ -1636,7 +1647,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
       const material = new THREE.PointsMaterial({
-          size: 0.6,
+          size: 0.9,
           sizeAttenuation: true,
           transparent: true,
           opacity: 0.85,
