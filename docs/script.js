@@ -954,6 +954,9 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const THREE = window.THREE;
     if (!THREE) return;
 
+    const layoutBounds = isMobile ? { left: -42, right: -8 } : { left: -60, right: -20 };
+    const bulletHeightRatio = 0.5;
+
     // SCENE
     const scene = new THREE.Scene();
     // Deep Space/Void Background
@@ -966,42 +969,12 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     
-    const isMobileViewport = () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
-    const computeRendererViewport = () => {
-      const isMobile = isMobileViewport();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      if (isMobile) {
-        let height = viewportHeight;
-        let width = height * (9 / 16);
-        if (width > viewportWidth) {
-          width = viewportWidth;
-          height = width * (16 / 9);
-        }
-        return {
-          width,
-          height,
-          offsetX: (viewportWidth - width) / 2,
-          offsetY: (viewportHeight - height) / 2,
-          isMobile
-        };
-      }
-      let height = viewportHeight;
-      let width = height * (3 / 4);
-      if (width > viewportWidth) {
-        width = viewportWidth;
-        height = width * (4 / 3);
-      }
-      return {
-        width,
-        height,
-        offsetX: (viewportWidth - width) / 2,
-        offsetY: (viewportHeight - height) / 2,
-        isMobile
-      };
-    };
+    const computeRendererViewport = () => ({
+      width: window.innerWidth,
+      height: window.innerHeight
+    });
     const applyRendererViewport = () => {
-      const { width, height, offsetX, offsetY } = computeRendererViewport();
+      const { width, height } = computeRendererViewport();
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
@@ -1012,9 +985,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
       canvas.style.maxHeight = '100%';
       canvas.style.display = 'block';
       canvas.style.position = 'absolute';
-      canvas.style.left = `${offsetX}px`;
-      canvas.style.top = `${offsetY}px`;
-      canvas.style.transform = 'none';
+      canvas.style.left = '0';
+      canvas.style.top = '0';
     };
     applyRendererViewport();
     mountRef.current?.appendChild(renderer.domElement);
@@ -1069,8 +1041,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
     const cloud = new THREE.Points(geometry, material);
     geometry.computeBoundingBox();
     const box = geometry.boundingBox;
-    const desiredLeft = -45;
-    const desiredRight = -5;
+    const desiredLeft = layoutBounds.left;
+    const desiredRight = layoutBounds.right;
     let targetX = desiredLeft - box.min.x;
     const projectedRight = box.max.x + targetX;
     if (projectedRight > desiredRight) {
@@ -1080,8 +1052,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
     scene.add(cloud);
     entityRef.current = cloud;
 
-    bulletSpawnYRef.current = box.min.y + (box.max.y - box.min.y) * 0.5;
-    bulletSpawnYRef.current += cloud.position.y;
+    const playerHeight = box.max.y - box.min.y;
+    bulletSpawnYRef.current = box.min.y + playerHeight * bulletHeightRatio + cloud.position.y;
 
     // ----------------------------
     // EYE ATTACHMENT LOGIC (EDGE DETECTION)
