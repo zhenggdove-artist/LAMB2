@@ -15,6 +15,8 @@ const TARGET_ASPECT_RATIO = 16 / 9;
 const BULLET_POINT_COUNT = 80;
 const SHOOTER_WORLD_POS = { x: 25, y: 0, z: 0 };
 const NPC_HEAD_ANCHOR_RATIO = 0.22; // fraction from top where head center sits
+const SHOOTER_FIRE_FRAME_INDEX = 6; // player7.PNG (0-based indexing)
+const BULLET_COOLDOWN_MS = 2000;
 
 const useIsMobileViewport = () => {
   const getMatches = () => {
@@ -47,14 +49,31 @@ const useIsMobileViewport = () => {
 };
 
 // Generic sprite sheet animator for <img> elements
-const SpriteAnimator = ({ frames, fps = 12, style, className = '', alt = '', ...imgProps }) => {
+const SpriteAnimator = ({
+  frames,
+  fps = 12,
+  breathe = false,
+  style,
+  className = '',
+  alt = '',
+  onFrameChange,
+  ...imgProps
+}) => {
   const [frameIndex, setFrameIndex] = useState(0);
   const frameCount = frames?.length || 0;
-  const intervalMs = Math.max(16, 1000 / Math.max(1, fps));
+  const rafRef = useRef(null);
+  const lastTimeRef = useRef(0);
+  const frameRef = useRef(0);
+  const breatheOffsetRef = useRef(Math.random() * Math.PI * 2);
 
   useEffect(() => {
     setFrameIndex(0);
-  }, [frameCount]);
+    frameRef.current = 0;
+    lastTimeRef.current = 0;
+    if (frameCount > 0) {
+      onFrameChange?.(0);
+    }
+  }, [frameCount, onFrameChange]);
 
   useEffect(() => {
     if (!frameCount) return undefined;
@@ -76,12 +95,32 @@ const SpriteAnimator = ({ frames, fps = 12, style, className = '', alt = '', ...
   useEffect(() => {
     if (!frameCount) return undefined;
 
-    const handle = setInterval(() => {
-      setFrameIndex((prev) => (prev + 1) % frameCount);
-    }, intervalMs);
+    const animate = (time) => {
+      if (!lastTimeRef.current) lastTimeRef.current = time;
+      const elapsed = time - lastTimeRef.current;
+      const baseInterval = 1000 / Math.max(1, fps);
+      const breatheWave = breathe
+        ? 0.5 + 0.5 * Math.sin(time * 0.001 * 0.8 + breatheOffsetRef.current)
+        : 0;
+      const breatheFactor = breathe ? 0.7 + breatheWave * 0.6 : 1;
+      const interval = baseInterval * breatheFactor;
 
-    return () => clearInterval(handle);
-  }, [frameCount, intervalMs]);
+      if (elapsed >= interval) {
+        lastTimeRef.current = time;
+        frameRef.current = (frameRef.current + 1) % frameCount;
+        setFrameIndex(frameRef.current);
+        onFrameChange?.(frameRef.current);
+      }
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      lastTimeRef.current = 0;
+    };
+  }, [frameCount, fps, breathe, onFrameChange]);
 
   if (!frameCount) return null;
 
@@ -859,6 +898,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const bulletsRef = useRef([]);
   const bloodParticlesRef = useRef([]);
   const isDeadRef = useRef(false);
+  const pendingShotRef = useRef(false);
 
   // INDEPENDENT EYE CONTROLLERS
   const eyesRef = useRef([]);
@@ -879,7 +919,7 @@ const GamePhase = ({ pointData, onGameOver }) => {
   const healIntensityRef = useRef(0);
   const hitIntensityRef = useRef(0);
   const animationFrameRef = useRef(0);
-  const lastBulletTimeRef = useRef(0);
+  const lastBulletTimeRef = useRef(-BULLET_COOLDOWN_MS);
 
   // Config for Tentacle Aesthetics
   const MAX_RINGS = 60; // How many transverse rings
@@ -1445,8 +1485,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
           }
 
           // BULLET LOGIC
-          if (time - lastBulletTimeRef.current > 2000) {
-              lastBulletTimeRef.current = time;
+          if (pendingShotRef.current) {
+              pendingShotRef.current = false;
               const bullet = createBullet(scene);
               if (bullet) {
                   bulletsRef.current.push(bullet);
@@ -1569,6 +1609,15 @@ const GamePhase = ({ pointData, onGameOver }) => {
       return cloud;
   }, []);
 
+  const handleShooterFrameChange = useCallback((frameIdx) => {
+      if (frameIdx !== SHOOTER_FIRE_FRAME_INDEX) return;
+      const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+      if (now - lastBulletTimeRef.current >= BULLET_COOLDOWN_MS) {
+          lastBulletTimeRef.current = now;
+          pendingShotRef.current = true;
+      }
+  }, []);
+
   const healthColor = health > 100 ? '#ff00ff' : '#00ff00';
   const healthLabelStyle = {
     position: 'absolute',
@@ -1610,6 +1659,8 @@ const GamePhase = ({ pointData, onGameOver }) => {
               id="npc_shooter"
               frames={ASSETS.SHOOTER_NPC_FRAMES}
               fps={14}
+              breathe
+              onFrameChange={handleShooterFrameChange}
               alt="Shooter"
               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
