@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { createRoot } from 'react-dom/client';
+// Use global React and ReactDOM from CDN
+const { useState, useRef, useEffect, useCallback } = React;
+const { createRoot } = ReactDOM;
 
 // ==========================================
 // CONFIGURATION & ASSETS
